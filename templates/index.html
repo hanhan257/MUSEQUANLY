@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quản lý tài khoản Muse AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0e1218;
+      --side: #121820;
+      --surface: #171e28;
+      --surface2: #1e2733;
+      --border: #2c3646;
+      --text: #e8edf5;
+      --muted: #8d98ab;
+      --accent: #0866ff;
+      --accent-hover: #1a75ff;
+      --success: #3dd68c;
+      --danger: #ff6b6b;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 268px 1fr;
+      min-height: 100vh;
+      align-items: start;
+    }
+    .side {
+      background: var(--side);
+      border-right: 1px solid var(--border);
+      padding: 1.1rem 0.85rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-self: start;
+      position: sticky;
+      top: 0;
+      width: 100%;
+    }
+    .brand { padding: 0.2rem 0.35rem 0.4rem; }
+    .brand h1 { margin: 0; font-size: 1.05rem; letter-spacing: -0.02em; }
+    .brand p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.75rem; }
+    .side-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 0.35rem;
+    }
+    .kho-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      overflow: auto;
+      max-height: min(420px, calc(100vh - 280px));
+      flex: 0 0 auto;
+    }
+    .kho-btn {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .kho-btn:hover { background: var(--surface2); }
+    .kho-btn.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
+    .kho-btn.error { color: #ffb4b4; }
+    .kho-btn.error.active { background: rgba(255, 107, 107, 0.16); border-color: rgba(255, 107, 107, 0.55); }
+    .btn-error { background: #3a2228; color: #ffb4b4; border: 1px solid #6a3038; }
+    .kho-count { font-size: 0.72rem; color: var(--muted); font-weight: 500; }
+    .side-actions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0; }
+    .build { font-size: 0.68rem; color: var(--muted); padding: 0 0.35rem; }
+    .main { padding: 1.1rem 1.25rem 2rem; min-width: 0; }
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 0.85rem;
+    }
+    .top h2 { margin: 0; font-size: 1.25rem; }
+    .meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+    button, .btn {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      padding: 0.48rem 0.75rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: #273140; }
+    .btn-all { background: linear-gradient(135deg, #3dd68c, #1f9a62); color: #08140e; }
+    .btn-sm { padding: 0.32rem 0.5rem; font-size: 0.74rem; }
+    input[type="search"], input[type="number"], select, textarea {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 0.45rem 0.6rem;
+    }
+    input[type="search"] { min-width: 180px; }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      resize: vertical;
+    }
+    .check-inline { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.3rem; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .login-status {
+      display: none;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.82rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .login-status.show { display: block; }
+    .login-status.running { border-left: 3px solid var(--accent); }
+    .login-status.done { border-left: 3px solid var(--success); }
+    .login-status.error { border-left: 3px solid var(--danger); }
+    .progress-bar { height: 4px; background: var(--border); display: none; }
+    .progress-bar.show { display: block; }
+    .progress-bar > span { display: block; height: 100%; width: 0; background: var(--success); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th.check, td.check { width: 42px; text-align: center; vertical-align: middle; }
+    th.check input, td.check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: #141b24; }
+    td.email { font-weight: 600; word-break: break-all; }
+    .subline { display: block; margin-top: 0.2rem; color: var(--muted); font-size: 0.72rem; font-family: "JetBrains Mono", monospace; font-weight: 500; word-break: break-all; }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+    }
+    .badge.ok { background: rgba(61, 214, 140, 0.16); color: var(--success); }
+    .badge.fresh { background: rgba(8, 102, 255, 0.22); color: #9ec2ff; }
+    .badge.no { background: rgba(141, 152, 171, 0.16); color: var(--muted); }
+    .badge.die { background: rgba(255, 107, 107, 0.18); color: #ff8d8d; }
+    .badge.live { background: rgba(61, 214, 140, 0.16); color: var(--success); }
+    .row-note { color: #ff8d8d; font-size: 0.75rem; margin-top: 0.3rem; white-space: normal; }
+    .token-line { margin-top: 0.35rem; color: #d5deea; font-size: 0.72rem; word-break: break-all; }
+    tr.just-got td { background: rgba(61, 214, 140, 0.08); }
+    .cookie-snip {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      color: #b7c4d6;
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: flex-end; }
+    .otp-box { display: none; margin-top: 0.45rem; }
+    .otp-box.show { display: block; }
+    .otp-code { font-family: "JetBrains Mono", monospace; font-size: 1.35rem; letter-spacing: 0.28em; color: var(--success); }
+    .otp-meta, .hint { color: var(--muted); font-size: 0.75rem; }
+    .otp-err { color: var(--danger); font-size: 0.8rem; }
+    .empty { text-align: center; color: var(--muted); padding: 2rem; }
+    .toast {
+      position: fixed; bottom: 1.2rem; right: 1.2rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      padding: 0.6rem 0.9rem; border-radius: 8px; font-size: 0.84rem;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 50;
+    }
+    .toast.show { opacity: 1; }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: none; z-index: 30;
+    }
+    .drawer-back.show { display: block; }
+    .drawer {
+      position: fixed; top: 0; right: 0; height: 100%; width: min(480px, 100%);
+      background: var(--side); border-left: 1px solid var(--border);
+      padding: 1.1rem; z-index: 40; overflow: auto;
+      transform: translateX(100%); transition: transform 0.18s ease;
+    }
+    .drawer.show { transform: translateX(0); }
+    .drawer h3 { margin: 0 0 0.35rem; }
+    .drawer section { margin-top: 1.1rem; }
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      .side { border-right: none; border-bottom: 1px solid var(--border); }
+      .actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <h1>Muse Manager</h1>
+        <p>Kho tài khoản · cookie · OTP Lay2FA</p>
+      </div>
+      <div class="side-label">Kho · 50 TK / kho</div>
+      <div class="kho-list" id="khoList"></div>
+      <div class="side-actions">
+        <button type="button" class="btn-primary" id="btnOpenImport">Dán tài khoản</button>
+        <button type="button" class="btn-ghost" id="btnNewWarehouse">+ Kho trống</button>
+        <div class="build">build {{ app_build }}</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="top">
+        <div>
+          <h2 id="khoTitle">Kho</h2>
+          <div class="meta" id="khoMeta"></div>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn-all" id="btnBatchAll">Lấy cookie kho này · 5 luồng</button>
+          <button type="button" class="btn-primary" id="btnRelogin" title="Đăng nhập lại cả kho, kể cả tài khoản đã có cookie">Đăng nhập lấy lại cookie</button>
+          <label class="check-inline"><input type="checkbox" id="skipExisting" checked /> Bỏ qua TK đã có cookie</label>
+        </div>
+      </div>
+
+      <div class="toolbar" style="margin-bottom:0.75rem;">
+        <input type="search" id="cookieSearch" placeholder="Lọc email…" />
+        <select id="cookieFilter" aria-label="Lọc cookie">
+          <option value="all">Tất cả trong kho</option>
+          <option value="has">Đã có cookie</option>
+          <option value="missing">Chưa có cookie</option>
+        </select>
+        <label class="check-inline">Dòng TXT
+          <input type="number" id="cookieLimit" value="50" min="1" max="500" style="width:4.2rem;" />
+        </label>
+        <button type="button" class="btn-primary" id="btnCopyFiltered">Copy đã tích</button>
+        <button type="button" class="btn-ghost" id="btnExportFiltered">Xuất TXT đã tích</button>
+        <button type="button" class="btn-ghost" id="btnReload">Tải lại</button>
+        <button type="button" class="btn-ghost" id="btnRename">Đổi tên kho</button>
+      </div>
+
+      <div class="panel">
+        <div id="loginStatus" class="login-status"></div>
+        <div class="progress-bar" id="batchProgress"><span id="batchProgressFill"></span></div>
+        <div id="tableWrap"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="drawer-back" id="drawerBack"></div>
+  <aside class="drawer" id="drawer">
+    <h3>Nhập tài khoản</h3>
+    <p class="hint">Mỗi dòng <code>email|lay2fa.xyz/email</code>. Dán 100 dòng sẽ thành Kho 1 (50) + Kho 2 (50).</p>
+    <section>
+      <div class="side-label">Dán nhiều kho</div>
+      <textarea id="bulkImportEditor" placeholder="email|lay2fa.xyz/email"></textarea>
+      <p class="hint">Proxy phía dưới: dòng 1 gắn tài khoản 1, dòng 50 gắn tài khoản 50. Dạng <code>ip:port</code> hoặc <code>ip:port:user:pass</code>.</p>
+      <textarea id="bulkProxyEditor" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
+      <div class="toolbar" style="margin-top:0.55rem;">
+        <button type="button" class="btn-primary" id="btnSplitReplace">Chia kho (thay toàn bộ)</button>
+        <button type="button" class="btn-ghost" id="btnSplitAppend">Thêm vào các kho</button>
+      </div>
+    </section>
+    <section>
+      <div class="side-label">Sửa đúng kho đang mở (tối đa 50)</div>
+      <textarea id="accountsEditor"></textarea>
+      <p class="hint">Proxy của kho này, cùng thứ tự với danh sách trên.</p>
+      <textarea id="proxyEditor" placeholder="proxy từng dòng, cùng thứ tự tài khoản"></textarea>
+      <div class="toolbar" style="margin-top:0.55rem;">
+        <button type="button" class="btn-primary" id="btnSave">Lưu kho này</button>
+      </div>
+    </section>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let accounts = [];
+    let activeWarehouseId = null;
+    let activeWarehouseKind = 'normal';
+    let warehouseSummary = null;
+    const excludedExport = new Set();
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2200);
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    }
+    function openDrawer() {
+      document.getElementById('drawer').classList.add('show');
+      document.getElementById('drawerBack').classList.add('show');
+    }
+    function closeDrawer() {
+      document.getElementById('drawer').classList.remove('show');
+      document.getElementById('drawerBack').classList.remove('show');
+    }
+
+    async function loadWarehouses() {
+      const res = await fetch('/api/warehouses');
+      warehouseSummary = await res.json();
+      activeWarehouseId = warehouseSummary.active_warehouse_id;
+      const list = warehouseSummary.warehouses || [];
+      const active = list.find(w => w.id === activeWarehouseId);
+      activeWarehouseKind = active?.kind || 'normal';
+      const root = document.getElementById('khoList');
+      root.innerHTML = list.map(w => `
+        <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''}" data-id="${w.id}">
+          <span>${escapeHtml(w.name)}</span>
+          <span class="kho-count">${w.kind === 'error' ? w.count : w.count + '/' + w.max}</span>
+        </button>`).join('') || '<div class="empty">Chưa có kho</div>';
+      root.querySelectorAll('.kho-btn').forEach(btn => {
+        btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
+      });
+      document.getElementById('khoTitle').textContent = active ? active.name : 'Kho';
+      document.getElementById('khoMeta').textContent = !active
+        ? ''
+        : active.kind === 'error'
+          ? `${active.count} tài khoản lỗi · bấm Trả về kho để đưa lại kho cũ`
+          : `${active.count}/${active.max} tài khoản · cookie lấy từ muse.ai`;
+    }
+
+    async function setActiveWarehouse(id) {
+      if (!id || id === activeWarehouseId) return;
+      await fetch('/api/warehouses/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      activeWarehouseId = id;
+      await refreshAll();
+      toast('Đã chuyển kho');
+    }
+
+    function statusBadge(status) {
+      if (status === 'live') return '<span class="badge live">Live</span> ';
+      if (status === 'die') return '<span class="badge die">Die</span> ';
+      if (status === 'lỗi') return '<span class="badge die">Lỗi đăng nhập</span> ';
+      return '';
+    }
+    function tokenLine(token) {
+      if (!token) return '';
+      const safe = String(token).replace(/[`$]/g, '');
+      return `<div class="token-line">Token: ${escapeHtml(safe.slice(0, 72))}${safe.length > 72 ? '…' : ''}</div>`;
+    }
+
+    function filteredAccounts() {
+      const q = document.getElementById('cookieSearch').value.trim().toLowerCase();
+      const mode = document.getElementById('cookieFilter').value;
+      return accounts.filter(a => {
+        if (q && !a.email.toLowerCase().includes(q)) return false;
+        if (mode === 'has') return a.has_cookie;
+        if (mode === 'missing') return !a.has_cookie;
+        return true;
+      });
+    }
+
+    function renderTable() {
+      const list = filteredAccounts();
+      const root = document.getElementById('tableWrap');
+      const withCookie = accounts.filter(a => a.has_cookie).length;
+      if (!accounts.length) {
+        root.innerHTML = '<div class="empty">Kho trống. Bấm Dán tài khoản để thêm.</div>';
+        return;
+      }
+      if (!list.length) {
+        root.innerHTML = '<div class="empty">Không có tài khoản khớp bộ lọc.</div>';
+        return;
+      }
+      root.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th class="check"><input type="checkbox" id="checkAllExport" title="Tích tất cả để xuất TXT" /></th>
+              <th>#</th>
+              <th>Tài khoản</th>
+              <th>Cookie</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((a, i) => {
+              const rawCookie = String(a.cookie_header || '').replace(/[`$]/g, '');
+              const snip = rawCookie ? escapeHtml(rawCookie.slice(0, 72)) + '…' : '—';
+              const key = a.email.toLowerCase();
+              const canExport = !!(a.has_cookie && a.cookie_header);
+              const checked = canExport && !excludedExport.has(key) ? 'checked' : '';
+              return `<tr data-email="${encodeURIComponent(a.email)}">
+                <td class="check"><input type="checkbox" class="row-export" data-email="${encodeURIComponent(a.email)}" ${canExport ? '' : 'disabled'} ${checked} title="${canExport ? 'Bỏ tích để không xuất cookie này' : 'Chưa có cookie'}" /></td>
+                <td>${i + 1}</td>
+                <td class="email">${escapeHtml(a.email)}
+                  <span class="subline">${escapeHtml(a.lay2fa_url || '')}</span>
+                  ${a.proxy ? `<span class="subline">proxy ${escapeHtml(a.proxy)}</span>` : ''}
+                  <div class="row-note">${escapeHtml(a.login_error || '')}</div>
+                  <div class="otp-box" id="otp-${i}"></div>
+                </td>
+                <td class="cookie-cell">
+                  ${statusBadge(a.account_status)}
+                  <span class="badge ${a.has_cookie ? 'ok' : 'no'}">${a.has_cookie ? 'Có cookie' : 'Chưa có'}</span>
+                  <div class="cookie-snip" title="${escapeHtml(rawCookie)}">${snip}</div>
+                  ${tokenLine(a.muse_token)}
+                  ${a.cookie_saved_at ? `<div class="hint">${escapeHtml(a.cookie_saved_at)}</div>` : ''}
+                </td>
+                <td>
+                  <div class="actions">
+                    <button type="button" class="btn-primary btn-sm" data-cookie="${encodeURIComponent(a.email)}">Lấy cookie</button>
+                    <button type="button" class="btn-ghost btn-sm" data-copy-cookie="${encodeURIComponent(a.email)}" ${a.has_cookie ? '' : 'disabled'}>Copy</button>
+                    <button type="button" class="btn-ghost btn-sm" data-otp="${encodeURIComponent(a.email)}" data-idx="${i}">OTP</button>
+                    <button type="button" class="btn-ghost btn-sm" data-login="${encodeURIComponent(a.email)}">Đăng nhập</button>
+                    <button type="button" class="btn-ghost btn-sm" data-lay2fa="${escapeHtml(a.lay2fa_url)}">Lay2FA</button>
+                    <button type="button" class="btn-error btn-sm" data-move-error="${encodeURIComponent(a.email)}" data-action="${activeWarehouseKind === 'error' ? 'restore' : 'to-error'}">${activeWarehouseKind === 'error' ? 'Trả về kho' : 'Kho lỗi'}</button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="hint" style="padding:0.55rem 0.75rem;">Hiển thị ${list.length}/${accounts.length} · ${withCookie} đã có cookie · tích All để xuất hết, bỏ tích 1 dòng để loại cookie đó khỏi TXT</div>`;
+
+      const checkAll = document.getElementById('checkAllExport');
+      checkAll.addEventListener('change', () => {
+        list.forEach(a => {
+          if (!(a.has_cookie && a.cookie_header)) return;
+          const key = a.email.toLowerCase();
+          if (checkAll.checked) excludedExport.delete(key);
+          else excludedExport.add(key);
+        });
+        root.querySelectorAll('.row-export').forEach(box => {
+          if (!box.disabled) box.checked = checkAll.checked;
+        });
+        syncCheckAll();
+      });
+      root.querySelectorAll('.row-export').forEach(box => {
+        box.addEventListener('change', () => {
+          const key = decodeURIComponent(box.dataset.email).toLowerCase();
+          if (box.checked) excludedExport.delete(key);
+          else excludedExport.add(key);
+          syncCheckAll();
+        });
+      });
+      syncCheckAll();
+
+      root.querySelectorAll('[data-lay2fa]').forEach(btn => {
+        btn.addEventListener('click', () => window.open(btn.dataset.lay2fa, '_blank'));
+      });
+      root.querySelectorAll('[data-otp]').forEach(btn => {
+        btn.addEventListener('click', () => fetchOtp(btn.dataset.otp, btn.dataset.idx, false));
+      });
+      root.querySelectorAll('[data-login]').forEach(btn => {
+        btn.addEventListener('click', () => startAutoLogin(btn.dataset.login, btn, { close_after: false }));
+      });
+      root.querySelectorAll('[data-cookie]').forEach(btn => {
+        btn.addEventListener('click', () => startAutoLogin(btn.dataset.cookie, btn, { close_after: true, headless: false }));
+      });
+      root.querySelectorAll('[data-copy-cookie]').forEach(btn => {
+        btn.addEventListener('click', () => copyCookie(btn.dataset.copyCookie));
+      });
+      root.querySelectorAll('[data-move-error]').forEach(btn => {
+        btn.addEventListener('click', () => moveError(btn.dataset.moveError, btn.dataset.action, btn));
+      });
+    }
+
+    async function moveError(encodedEmail, action, btn) {
+      const email = decodeURIComponent(encodedEmail);
+      btn.disabled = true;
+      const res = await fetch('/api/accounts/move-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, action }),
+      });
+      const data = await res.json();
+      btn.disabled = false;
+      if (!data.ok) { toast(data.error || 'Không chuyển được'); return; }
+      toast(action === 'restore' ? `Đã trả về ${data.warehouse_name || 'kho'}` : 'Đã chuyển vào kho lỗi');
+      await refreshAll();
+    }
+
+    async function loadEditor() {
+      const q = activeWarehouseId ? '?warehouse_id=' + encodeURIComponent(activeWarehouseId) + '&t=' + Date.now() : '?t=' + Date.now();
+      const res = await fetch('/api/accounts' + q, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.warehouse?.id) activeWarehouseId = data.warehouse.id;
+      const vaultRes = await fetch('/api/cookies/vault' + q, { cache: 'no-store' });
+      const vault = await vaultRes.json();
+      const byEmail = {};
+      (vault.items || []).forEach(it => { byEmail[it.email.toLowerCase()] = it; });
+      accounts = (data.accounts || []).map(a => {
+        const v = byEmail[a.email.toLowerCase()] || {};
+        return {
+          ...a,
+          has_cookie: !!(a.has_cookie || v.has_cookie),
+          cookie_header: v.cookie_header || '',
+          cookie_saved_at: a.cookie_saved_at || v.saved_at || '',
+          muse_token: v.muse_token || '',
+          account_status: v.account_status || '',
+          login_error: v.login_error || '',
+        };
+      });
+      document.getElementById('accountsEditor').value = accounts
+        .map(a => `${a.email}|${String(a.lay2fa_url || '').replace(/^https?:\/\//, '')}`)
+        .join('\n');
+      document.getElementById('proxyEditor').value = accounts.map(a => a.proxy || '').join('\n');
+      document.getElementById('khoTitle').textContent = data.warehouse?.name || document.getElementById('khoTitle').textContent;
+      renderTable();
+    }
+
+    function syncCheckAll() {
+      const box = document.getElementById('checkAllExport');
+      if (!box) return;
+      const withCookie = filteredAccounts().filter(a => a.has_cookie && a.cookie_header);
+      const selected = withCookie.filter(a => !excludedExport.has(a.email.toLowerCase()));
+      box.disabled = withCookie.length === 0;
+      box.checked = withCookie.length > 0 && selected.length === withCookie.length;
+      box.indeterminate = selected.length > 0 && selected.length < withCookie.length;
+    }
+
+    function selectedCookieLines() {
+      const limit = Number(document.getElementById('cookieLimit').value || 50);
+      return filteredAccounts()
+        .filter(a => a.has_cookie && a.cookie_header && !excludedExport.has(a.email.toLowerCase()))
+        .slice(0, limit)
+        .map(a => `${a.email}|${a.cookie_header}`);
+    }
+
+    function exportFilteredDownload() {
+      const lines = selectedCookieLines();
+      if (!lines.length) { toast('Không có cookie được tích'); return; }
+      const kho = (document.getElementById('khoTitle').textContent || 'Kho').trim().replace(/[\\/:*?"<>|]/g, '');
+      const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${kho} - ${lines.length} cookie.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(`Đã xuất ${a.download}`);
+    }
+
+    async function copyFiltered() {
+      const lines = selectedCookieLines();
+      if (!lines.length) { toast('Không có cookie được tích'); return; }
+      await navigator.clipboard.writeText(lines.join('\n'));
+      toast(`Đã copy ${lines.length} dòng`);
+    }
+
+    async function copyCookie(encodedEmail) {
+      const email = decodeURIComponent(encodedEmail);
+      const res = await fetch('/api/cookies/' + encodeURIComponent(email));
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Chưa có cookie'); return; }
+      const header = data.cookie_header || data.muse_cookie_header || '';
+      await navigator.clipboard.writeText(`${data.email || email}|${header}`);
+      toast('Đã copy email|cookie');
+    }
+
+    let batchPollTimer = null;
+    function setLoginStatus(text, kind) {
+      const box = document.getElementById('loginStatus');
+      box.textContent = text;
+      box.className = 'login-status show ' + (kind || 'running');
+    }
+
+    function setBatchButtons(disabled) {
+      document.getElementById('btnBatchAll').disabled = disabled;
+      document.getElementById('btnRelogin').disabled = disabled;
+    }
+
+    async function startBatchAll(force) {
+      if (batchPollTimer) return;
+      setBatchButtons(true);
+      document.getElementById('batchProgress').classList.add('show');
+      document.getElementById('batchProgressFill').style.width = '0%';
+      setLoginStatus(
+        force
+          ? 'Đăng nhập lấy lại cookie · 5 Chrome sẽ hiện, kể cả TK đã có cookie…'
+          : 'Đang chuẩn bị lấy cookie · 5 Chrome sẽ hiện lên…',
+        'running'
+      );
+      const skipExisting = force ? false : document.getElementById('skipExisting').checked;
+      const res = await fetch('/api/batch/cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skip_existing: skipExisting, warehouse_id: activeWarehouseId }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        toast(data.error || 'Không chạy được');
+        setBatchButtons(false);
+        document.getElementById('batchProgress').classList.remove('show');
+        return;
+      }
+      const jobId = data.job_id;
+      const painted = new Set();
+      let pollBusy = false;
+      batchPollTimer = setInterval(async () => {
+        if (pollBusy) return;
+        pollBusy = true;
+        try {
+          const st = await fetch('/api/batch/' + jobId, { cache: 'no-store' }).then(r => r.json());
+          const pct = st.total ? Math.round((st.current || 0) / st.total * 100) : 0;
+          document.getElementById('batchProgressFill').style.width = pct + '%';
+          if (st.status === 'unknown') {
+            clearInterval(batchPollTimer);
+            batchPollTimer = null;
+            setBatchButtons(false);
+            setLoginStatus('Phiên chạy không còn trên server. Bấm lại nút.', 'error');
+            return;
+          }
+          const running = (st.running_emails || []).length;
+          const fresh = st.ok || 0;
+          const kind = st.status === 'error' ? 'error' : (st.status === 'done' ? 'done' : 'running');
+          setLoginStatus(
+            `Đã lấy mới ${fresh}/${st.total || '?'} cookie · lỗi ${st.fail || 0} · đang chạy ${running} luồng`,
+            kind
+          );
+          for (const row of st.results || []) {
+            if (!row.email || painted.has(row.email.toLowerCase())) continue;
+            if (row.status !== 'ok' && row.status !== 'error') continue;
+            painted.add(row.email.toLowerCase());
+            if (row.status === 'ok') await paintFreshCookie(row.email);
+            else await paintLoginFail(row.email, row.error || 'Không đăng nhập được');
+          }
+          if (st.status === 'done') {
+            clearInterval(batchPollTimer);
+            batchPollTimer = null;
+            setBatchButtons(false);
+            document.getElementById('batchProgressFill').style.width = '100%';
+            if (st.ran === false) {
+              setLoginStatus(st.detail || 'Không mở Chrome vì TK đã có cookie.', 'error');
+              toast('Không chạy lại');
+              return;
+            }
+            setLoginStatus(`Đã lấy mới ${fresh}/${st.total || fresh} cookie · lỗi ${st.fail || 0}`, 'done');
+            toast(`Đã hiện ${fresh} cookie mới trên bảng`);
+          } else if (st.status === 'error') {
+            clearInterval(batchPollTimer);
+            batchPollTimer = null;
+            setBatchButtons(false);
+            setLoginStatus(st.error || 'Lỗi', 'error');
+          }
+        } finally {
+          pollBusy = false;
+        }
+      }, 1000);
+    }
+
+    async function paintFreshCookie(email) {
+      const res = await fetch('/api/cookies/' + encodeURIComponent(email) + '?brief=1', { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) return;
+      const header = data.cookie_header || data.muse_cookie_header || '';
+      const acc = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+      if (acc) {
+        acc.has_cookie = !!header;
+        acc.cookie_header = header;
+        acc.cookie_saved_at = data.saved_at || '';
+        acc.muse_token = data.muse_token || '';
+        acc.account_status = data.account_status || '';
+        acc.login_error = '';
+      }
+      const row = document.querySelector(`tr[data-email="${encodeURIComponent(email)}"]`);
+      if (!row) return;
+      const safe = String(header).replace(/[`$]/g, '');
+      const note = row.querySelector('.row-note');
+      if (note) note.textContent = '';
+      const cell = row.querySelector('.cookie-cell');
+      if (cell) {
+        cell.innerHTML = `${statusBadge(data.account_status)}<span class="badge fresh">Vừa lấy</span>
+          <div class="cookie-snip" title="${escapeHtml(safe)}">${escapeHtml(safe.slice(0, 72))}…</div>
+          ${tokenLine(data.muse_token)}
+          <div class="hint">${escapeHtml(data.saved_at || '')}</div>`;
+      }
+      row.classList.add('just-got');
+      const copyBtn = row.querySelector('[data-copy-cookie]');
+      if (copyBtn) copyBtn.disabled = false;
+      const box = row.querySelector('.row-export');
+      if (box) { box.disabled = false; box.checked = !excludedExport.has(email.toLowerCase()); }
+    }
+
+    async function paintLoginFail(email, error) {
+      const acc = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+      if (acc) acc.login_error = error;
+      const row = document.querySelector(`tr[data-email="${encodeURIComponent(email)}"]`);
+      if (!row) return;
+      const note = row.querySelector('.row-note');
+      if (note) note.textContent = error;
+      row.classList.add('just-got');
+    }
+
+    let loginPollTimer = null;
+    async function startAutoLogin(encodedEmail, btn, opts = {}) {
+      const email = decodeURIComponent(encodedEmail);
+      const closeAfter = !!opts.close_after;
+      const headless = opts.headless ?? false;
+      if (loginPollTimer) clearInterval(loginPollTimer);
+      btn.disabled = true;
+      setLoginStatus(closeAfter ? `Đang lấy cookie: ${email}` : `Đang đăng nhập: ${email}`, 'running');
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, headless, close_after: closeAfter, save_cookies: true }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setLoginStatus(data.error || 'Lỗi', 'error');
+        btn.disabled = false;
+        return;
+      }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') setLoginStatus(line || 'Đang chạy…', 'running');
+        else if (st.status === 'done') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setLoginStatus((st.detail || 'Xong') + (st.cookies_count ? ` · ${st.cookies_count} cookie` : ''), 'done');
+          btn.disabled = false;
+          await refreshAll();
+          toast(st.cookies_count ? 'Đã lưu cookie' : 'Đăng nhập xong');
+        } else if (st.status === 'error') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setLoginStatus(st.error || 'Lỗi đăng nhập', 'error');
+          btn.disabled = false;
+        }
+      }, 1500);
+    }
+
+    async function fetchOtp(encodedEmail, idx) {
+      const box = document.getElementById('otp-' + idx);
+      if (!box) return;
+      box.classList.add('show');
+      box.innerHTML = '<span class="otp-meta">Đang lấy mã…</span>';
+      const email = decodeURIComponent(encodedEmail);
+      const res = await fetch('/api/otp/' + encodeURIComponent(email));
+      const data = await res.json();
+      if (data.code) {
+        box.innerHTML = `<div class="otp-code">${data.code}</div><div class="otp-meta">${escapeHtml(data.message?.subject || '')}</div>`;
+        try { await navigator.clipboard.writeText(data.code); } catch (_) {}
+        toast('Đã copy mã OTP');
+        return;
+      }
+      box.innerHTML = `<div class="otp-err">${escapeHtml(data.error || 'Không có mã')}</div>`;
+    }
+
+    async function importSplit(mode) {
+      const text = document.getElementById('bulkImportEditor').value;
+      const proxies = document.getElementById('bulkProxyEditor').value;
+      const res = await fetch('/api/warehouses/import-split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, proxies, mode }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast('Lỗi import'); return; }
+      toast(mode === 'append' ? 'Đã thêm vào kho' : 'Đã chia kho');
+      closeDrawer();
+      await refreshAll();
+    }
+
+    async function refreshAll() {
+      await loadWarehouses();
+      await loadEditor();
+    }
+
+    document.getElementById('btnOpenImport').addEventListener('click', openDrawer);
+    document.getElementById('drawerBack').addEventListener('click', closeDrawer);
+    document.getElementById('btnSave').addEventListener('click', async () => {
+      const text = document.getElementById('accountsEditor').value;
+      const proxies = document.getElementById('proxyEditor').value;
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, proxies }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không lưu được'); return; }
+      toast('Đã lưu kho');
+      closeDrawer();
+      await refreshAll();
+    });
+    document.getElementById('btnReload').addEventListener('click', refreshAll);
+    document.getElementById('btnBatchAll').addEventListener('click', () => startBatchAll(false));
+    document.getElementById('btnRelogin').addEventListener('click', () => startBatchAll(true));
+    document.getElementById('btnCopyFiltered').addEventListener('click', copyFiltered);
+    document.getElementById('btnExportFiltered').addEventListener('click', exportFilteredDownload);
+    ['cookieSearch', 'cookieFilter'].forEach(id => {
+      document.getElementById(id).addEventListener('input', renderTable);
+      document.getElementById(id).addEventListener('change', renderTable);
+    });
+    document.getElementById('btnSplitReplace').addEventListener('click', () => importSplit('replace'));
+    document.getElementById('btnSplitAppend').addEventListener('click', () => importSplit('append'));
+    document.getElementById('btnNewWarehouse').addEventListener('click', async () => {
+      await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      await refreshAll();
+      toast('Đã tạo kho mới');
+    });
+    document.getElementById('btnRename').addEventListener('click', async () => {
+      const current = document.getElementById('khoTitle').textContent;
+      const name = prompt('Tên kho', current);
+      if (!name || !activeWarehouseId) return;
+      const res = await fetch('/api/warehouses/' + encodeURIComponent(activeWarehouseId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không đổi được tên'); return; }
+      await refreshAll();
+      toast('Đã đổi tên kho');
+    });
+
+    refreshAll();
+  </script>
+</body>
+</html>
