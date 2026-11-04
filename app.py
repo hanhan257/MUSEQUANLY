@@ -20,7 +20,7 @@ from cookie_store import (
     token_from_cookie_header,
 )
 from lay2fa_client import get_latest_muse_code, parse_account_line
-from muse_automation import LoginProgress, login_muse
+from muse_automation import LoginProgress, clear_stop, login_muse, request_stop, stop_requested
 from warehouse_store import (
     ACCOUNTS_PER_WAREHOUSE,
     create_warehouse,
@@ -43,7 +43,7 @@ from warehouse_store import (
 ROOT = Path(__file__).resolve().parent
 ACCOUNTS_FILE = ROOT / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "recovery-click-v22"
+APP_BUILD = "stop-run-v23"
 BATCH_PARALLEL = 5
 
 ensure_initialized()
@@ -155,7 +155,10 @@ def api_warehouses_import_split():
     if mode == "append":
         summary = import_split_append(raw, proxies_raw)
     else:
-        summary = import_split_replace(raw, proxies_raw)
+        try:
+            summary = import_split_replace(raw, proxies_raw)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "summary": summary})
 
 
@@ -334,6 +337,8 @@ def _set_batch(job_id: str, data: dict) -> None:
 
 
 def _cookie_one(email: str) -> dict:
+    if stop_requested():
+        return {"email": email, "status": "stopped", "error": "Đã dừng"}
     try:
         result = login_muse(
             email,
@@ -366,6 +371,8 @@ def _run_batch_cookies(job_id: str, emails: list[str], *, skip_existing: bool) -
     state_lock = threading.Lock()
 
     def publish(detail: str) -> None:
+        if stop_requested():
+            return
         with state_lock:
             snapshot = {
                 "status": "running",
@@ -391,6 +398,8 @@ def _run_batch_cookies(job_id: str, emails: list[str], *, skip_existing: bool) -
         publish(f"Bỏ qua {skip_count} TK đã có cookie · sắp chạy {min(BATCH_PARALLEL, len(pending) or 0)} luồng")
 
         def run_one(email: str) -> dict:
+            if stop_requested():
+                return {"email": email, "status": "stopped", "error": "Đã dừng"}
             with state_lock:
                 running.add(email)
                 active = sorted(running)
@@ -401,20 +410,44 @@ def _run_batch_cookies(job_id: str, emails: list[str], *, skip_existing: bool) -
                 with state_lock:
                     running.discard(email)
 
+        stopped = False
         if pending:
             with ThreadPoolExecutor(max_workers=BATCH_PARALLEL) as pool:
                 futures = [pool.submit(run_one, email) for email in pending]
                 for fut in as_completed(futures):
+                    if stop_requested():
+                        stopped = True
+                        break
                     row = fut.result()
                     with state_lock:
                         rows.append(row)
                         if row.get("status") == "ok":
                             ok_count += 1
-                        else:
+                        elif row.get("status") != "stopped":
                             fail_count += 1
                     publish(
                         f"Xong {ok_count + fail_count + skip_count}/{total} · còn {len(running)} luồng đang chạy"
                     )
+                if stopped:
+                    for fut in futures:
+                        fut.cancel()
+        if stopped or stop_requested():
+            _set_batch(
+                job_id,
+                {
+                    "status": "stopped",
+                    "current": ok_count + fail_count + skip_count,
+                    "workers": BATCH_PARALLEL,
+                    "running_emails": [],
+                    "ran": True,
+                    "detail": f"Đã dừng. OK {ok_count}, lỗi {fail_count}, bỏ qua {skip_count}.",
+                    "ok": ok_count,
+                    "fail": fail_count,
+                    "skipped": skip_count,
+                    "results": rows,
+                },
+            )
+            return
 
         ran = bool(pending)
         if ran:
@@ -460,6 +493,7 @@ def api_batch_cookies():
         return jsonify({"ok": False, "error": "Không có tài khoản trong danh sách."}), 400
 
     job_id = uuid.uuid4().hex[:12]
+    clear_stop()
     _batch_running.set()
     _set_batch(job_id, {"status": "running", "total": len(emails), "emails": emails})
     thread = threading.Thread(
@@ -470,6 +504,18 @@ def api_batch_cookies():
     )
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "total": len(emails), "workers": BATCH_PARALLEL})
+
+
+@app.post("/api/batch/stop")
+def api_batch_stop():
+    closed = request_stop()
+    with _jobs_lock:
+        for job in _batch_jobs.values():
+            if job.get("status") == "running":
+                job["status"] = "stopped"
+                job["detail"] = "Đã dừng tiến trình đang chạy."
+                job["running_emails"] = []
+    return jsonify({"ok": True, "closed": closed})
 
 
 @app.get("/api/batch/<job_id>")

@@ -172,7 +172,18 @@
     .badge.no { background: rgba(141, 152, 171, 0.16); color: var(--muted); }
     .badge.die { background: rgba(255, 107, 107, 0.18); color: #ff8d8d; }
     .badge.live { background: rgba(61, 214, 140, 0.16); color: var(--success); }
-    .row-note { color: #ff8d8d; font-size: 0.75rem; margin-top: 0.3rem; white-space: normal; }
+    .note-clip { display: grid; grid-template-columns: minmax(0, 34rem); max-width: 100%; }
+    .note-clip:has(.row-note:empty) { display: none; }
+    .row-note {
+      color: #ff8d8d;
+      font-size: 0.75rem;
+      margin-top: 0.3rem;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: help;
+    }
     .token-line { margin-top: 0.35rem; color: #d5deea; font-size: 0.72rem; word-break: break-all; }
     tr.just-got td { background: rgba(61, 214, 140, 0.08); }
     .cookie-snip {
@@ -244,6 +255,7 @@
         <div class="toolbar">
           <button type="button" class="btn-all" id="btnBatchAll">Lấy cookie kho này · 5 luồng</button>
           <button type="button" class="btn-primary" id="btnRelogin" title="Đăng nhập lại cả kho, kể cả tài khoản đã có cookie">Đăng nhập lấy lại cookie</button>
+          <button type="button" class="btn-error" id="btnStop">Dừng</button>
           <label class="check-inline"><input type="checkbox" id="skipExisting" checked /> Bỏ qua TK đã có cookie</label>
         </div>
       </div>
@@ -419,7 +431,7 @@
                 <td class="email">${escapeHtml(a.email)}
                   <span class="subline">${escapeHtml(a.lay2fa_url || '')}</span>
                   ${a.proxy ? `<span class="subline">proxy ${escapeHtml(a.proxy)}</span>` : ''}
-                  <div class="row-note">${escapeHtml(a.login_error || '')}</div>
+                  <div class="note-clip"><div class="row-note" title="${escapeHtml(a.login_error || '')}">${escapeHtml(a.login_error || '')}</div></div>
                   <div class="otp-box" id="otp-${i}"></div>
                 </td>
                 <td class="cookie-cell">
@@ -647,11 +659,16 @@
             if (row.status === 'ok') await paintFreshCookie(row.email);
             else await paintLoginFail(row.email, row.error || 'Không đăng nhập được');
           }
-          if (st.status === 'done') {
+          if (st.status === 'done' || st.status === 'stopped') {
             clearInterval(batchPollTimer);
             batchPollTimer = null;
             setBatchButtons(false);
-            document.getElementById('batchProgressFill').style.width = '100%';
+            document.getElementById('batchProgressFill').style.width = st.status === 'stopped' ? pct + '%' : '100%';
+            if (st.status === 'stopped') {
+              setLoginStatus(st.detail || 'Đã dừng', 'error');
+              toast('Đã dừng');
+              return;
+            }
             if (st.ran === false) {
               setLoginStatus(st.detail || 'Không mở Chrome vì TK đã có cookie.', 'error');
               toast('Không chạy lại');
@@ -689,7 +706,7 @@
       if (!row) return;
       const safe = String(header).replace(/[`$]/g, '');
       const note = row.querySelector('.row-note');
-      if (note) note.textContent = '';
+      if (note) { note.textContent = ''; note.title = ''; }
       const cell = row.querySelector('.cookie-cell');
       if (cell) {
         cell.innerHTML = `${statusBadge(data.account_status)}<span class="badge fresh">Vừa lấy</span>
@@ -710,7 +727,7 @@
       const row = document.querySelector(`tr[data-email="${encodeURIComponent(email)}"]`);
       if (!row) return;
       const note = row.querySelector('.row-note');
-      if (note) note.textContent = error;
+      if (note) { note.textContent = error; note.title = error; }
       row.classList.add('just-got');
     }
 
@@ -809,6 +826,15 @@
     document.getElementById('btnReload').addEventListener('click', refreshAll);
     document.getElementById('btnBatchAll').addEventListener('click', () => startBatchAll(false));
     document.getElementById('btnRelogin').addEventListener('click', () => startBatchAll(true));
+    document.getElementById('btnStop').addEventListener('click', async () => {
+      document.getElementById('btnStop').disabled = true;
+      setLoginStatus('Đang dừng Chrome và các luồng…', 'error');
+      const res = await fetch('/api/batch/stop', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('btnStop').disabled = false;
+      if (!data.ok) { toast('Không dừng được'); return; }
+      toast('Đã gửi lệnh dừng');
+    });
     document.getElementById('btnCopyFiltered').addEventListener('click', copyFiltered);
     document.getElementById('btnExportFiltered').addEventListener('click', exportFilteredDownload);
     ['cookieSearch', 'cookieFilter'].forEach(id => {

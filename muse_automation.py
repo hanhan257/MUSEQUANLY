@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -40,6 +42,47 @@ class LoginProgress:
 
 
 ProgressCallback = Callable[[LoginProgress], None]
+_cancel = threading.Event()
+
+
+def stop_requested() -> bool:
+    return _cancel.is_set()
+
+
+def clear_stop() -> None:
+    _cancel.clear()
+
+
+def request_stop() -> int:
+    """Dừng batch và đóng Chrome do tool mở (bản Playwright, không phải Chrome thường)."""
+    _cancel.set()
+    if os_name_is_windows():
+        return _kill_playwright_browsers()
+    return 0
+
+
+def os_name_is_windows() -> bool:
+    import os
+
+    return os.name == "nt"
+
+
+def _kill_playwright_browsers() -> int:
+    script = (
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.Name -match 'chrome|chromium' -and $_.CommandLine -and $_.CommandLine -like '*ms-playwright*' } | "
+        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }"
+    )
+    try:
+        done = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception:
+        return 0
+    return len([line for line in (done.stdout or "").splitlines() if line.strip().isdigit()])
 
 
 def _emit(cb: ProgressCallback | None, **kwargs: object) -> None:
@@ -489,13 +532,20 @@ def login_muse(
                     break
             return result
         except Exception as exc:
-            message = str(exc)
-            status = "die" if DIE_TEXT.search(message) else "lỗi"
+            stopped = stop_requested()
+            message = "Đã dừng" if stopped else str(exc)
+            status = "" if stopped else ("die" if DIE_TEXT.search(message) else "lỗi")
+            if not stopped:
+                try:
+                    update_account_meta(email, login_error=message, account_status=status)
+                except Exception:
+                    pass
+            final_url = None
             try:
-                update_account_meta(email, login_error=message, account_status=status)
+                final_url = page.url
             except Exception:
                 pass
-            err = LoginProgress(step="error", error=message, final_url=page.url)
+            err = LoginProgress(step="error", error=message, final_url=final_url)
             _emit(on_progress, **err.__dict__)
             if headless or close_after:
                 browser.close()

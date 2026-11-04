@@ -1,6 +1,2 @@
 __pycache__/
 *.pyc
-cookies.json
-cookies_export.txt
-accounts.txt
-warehouses.json

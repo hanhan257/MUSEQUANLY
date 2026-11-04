@@ -238,6 +238,8 @@ def save_active_accounts(rows: list[dict[str, str]]) -> None:
 def import_split_replace(raw: str, proxies_raw: str = "") -> dict[str, Any]:
     """Parse all lines and rebuild warehouses (50 accounts each). Kho lỗi được giữ lại."""
     accounts = _parse_text(raw, proxies_raw)
+    if not accounts:
+        raise ValueError("Không có tài khoản trong nội dung dán. Kho hiện tại được giữ nguyên.")
     data = ensure_initialized()
     error = _ensure_error_warehouse(data)
     pasted = {a["email"].lower() for a in accounts}
