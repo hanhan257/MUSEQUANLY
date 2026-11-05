@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import subprocess
 import threading
 import time
+from datetime import date, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -342,9 +344,16 @@ def _capture_and_save_cookies(
     )
 
 
+def normalize_proxy_line(raw: str | None) -> str:
+    text = (raw or "").strip()
+    for ch in ("\ufeff", "\u200b", "\u200c", "\u200d"):
+        text = text.replace(ch, "")
+    return text.strip()
+
+
 def parse_proxy(raw: str | None) -> dict[str, str] | None:
     """Turn ip:port, ip:port:user:pass, or scheme://user:pass@host:port into a Playwright proxy."""
-    text = (raw or "").strip()
+    text = normalize_proxy_line(raw)
     if not text:
         return None
     if "://" not in text:
@@ -397,6 +406,7 @@ CARD_BAD = re.compile(
     r"thẻ không hợp lệ|thẻ bị từ chối|thẻ này không|không thể xác minh|không thể xử lý thẻ|thẻ đã bị|invalid card|card (?:was )?declined|incorrect card|try another card|card number is invalid",
     re.I,
 )
+CARD_BUSY = re.compile(r"too many attempts|too many failed|quá nhiều lần|thử lại sau", re.I)
 CARD_ZIP = "06779"
 CARD_CONFIRM = re.compile(r"^Xác nhận$|^Confirm$", re.I)
 DISCLOSURE_PAGE = re.compile(
@@ -443,20 +453,24 @@ def _read_exit_country(page: Page) -> tuple[str, str]:
 
 def _require_us_exit(page: Page, on_progress: ProgressCallback | None, *, using_proxy: bool) -> str:
     """IP ra của chính Chrome này phải là Mỹ rồi mới tạo mail và tài khoản."""
-    _emit(on_progress, step="proxy", detail="Chrome mới đã mở. Đang xem IP ra có phải Mỹ không…")
+    _emit(on_progress, step="ip", detail="Chrome mới đã mở. Đang kiểm tra IP ra có phải Mỹ…")
     country, ip = _read_exit_country(page)
     if country != "US":
         where = country or "không rõ"
         if ip:
             where = f"{where} {ip}"
         if using_proxy:
-            raise RuntimeError(f"Proxy ra IP {where}, không phải Mỹ. Chưa tạo mail và chưa tạo tài khoản.")
+            raise RuntimeError(f"Dòng proxy ra IP {where}, không phải Mỹ. Chưa tạo mail và chưa tạo tài khoản.")
         raise RuntimeError(f"Chrome đang ra IP {where}, không phải Mỹ. Cần proxy US rồi mới tạo tài khoản.")
     shown = ip or "US"
     if using_proxy:
-        _emit(on_progress, step="proxy", detail=f"Đã nhận proxy US {shown}. Tạo mail và đăng nhập lại trước khi tạo tài khoản.")
+        _emit(
+            on_progress,
+            step="ip",
+            detail=f"Proxy OK · IP Mỹ {shown}. Tạo mail và đăng nhập lại trước khi vào Muse.",
+        )
     else:
-        _emit(on_progress, step="proxy", detail=f"Chrome đang ra IP Mỹ {shown}. Tạo mail và đăng nhập lại trước khi tạo tài khoản.")
+        _emit(on_progress, step="ip", detail=f"IP Mỹ {shown}. Tạo mail và đăng nhập lại trước khi vào Muse.")
     return ip
 
 
@@ -617,6 +631,21 @@ def _click_named_button(page: Page, pattern: re.Pattern[str]) -> bool:
         except Exception:
             continue
     return False
+
+
+def _visible_excerpt(page: Page, limit: int = 700) -> str:
+    chunks: list[str] = []
+    for frame in _frames(page):
+        if "recaptcha" in (frame.url or "").lower():
+            continue
+        try:
+            text = frame.locator("body").inner_text(timeout=2000)
+        except Exception:
+            continue
+        text = " ".join((text or "").split())
+        if text:
+            chunks.append(text)
+    return " ".join(chunks)[:limit]
 
 
 def _text_visible(page: Page, pattern: re.Pattern[str]) -> bool:
@@ -1249,6 +1278,20 @@ def _installed_browser_channel() -> str | None:
     return None
 
 
+def _browser_context_kwargs(proxy_cfg: dict[str, str] | None) -> dict:
+    """Proxy Mỹ thì Chrome phải ra giờ, ngôn ngữ và vị trí Mỹ. Lệch giờ là Muse từ chối tạo."""
+    kwargs: dict = {"viewport": {"width": 1280, "height": 900}}
+    if proxy_cfg:
+        kwargs["locale"] = "en-US"
+        kwargs["timezone_id"] = "America/New_York"
+        kwargs["geolocation"] = {"latitude": 40.7306, "longitude": -73.9352}
+        kwargs["permissions"] = ["geolocation", "clipboard-read", "clipboard-write"]
+    else:
+        kwargs["locale"] = "vi-VN"
+        kwargs["permissions"] = ["clipboard-read", "clipboard-write"]
+    return kwargs
+
+
 def _browser_launch_kwargs(proxy_cfg: dict[str, str] | None, *, headless: bool = False) -> dict:
     """Chrome thường, không bật cờ automation. Proxy gắn ngay lúc mở cửa sổ."""
     kwargs: dict = {
@@ -1257,6 +1300,8 @@ def _browser_launch_kwargs(proxy_cfg: dict[str, str] | None, *, headless: bool =
         "args": [
             "--disable-features=Translate",
             "--disable-blink-features=AutomationControlled",
+            "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+            "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
         ],
     }
     channel = _installed_browser_channel()
@@ -1386,9 +1431,62 @@ def _name_kind(blob: str) -> str:
     return ""
 
 
-def _fill_name(page: Page) -> bool:
-    """Tên Han, họ Tran. Không thấy ô họ tên thì bỏ qua."""
-    targets = {"first": "Han", "last": "Tran", "full": "Tran Han"}
+_GIVEN_NAMES = (
+    "An", "Bao", "Chi", "Dung", "Giang", "Ha", "Hieu", "Hoa", "Hung", "Khanh",
+    "Lan", "Linh", "Long", "Mai", "Minh", "Nam", "Ngoc", "Phong", "Quan", "Son",
+    "Thao", "Trang", "Tuan", "Vy", "Yen",
+)
+_FAMILY_NAMES = (
+    "Nguyen", "Tran", "Le", "Pham", "Hoang", "Huynh", "Phan", "Vu", "Vo", "Dang",
+    "Bui", "Do", "Ngo", "Duong", "Ly",
+)
+_MONTH_LABELS = (
+    [],
+    ["1", "01", "Tháng 1", "January", "Jan"],
+    ["2", "02", "Tháng 2", "February", "Feb"],
+    ["3", "03", "Tháng 3", "March", "Mar"],
+    ["4", "04", "Tháng 4", "April", "Apr"],
+    ["5", "05", "Tháng 5", "May"],
+    ["6", "06", "Tháng 6", "June", "Jun"],
+    ["7", "07", "Tháng 7", "July", "Jul"],
+    ["8", "08", "Tháng 8", "August", "Aug"],
+    ["9", "09", "Tháng 9", "September", "Sep"],
+    ["10", "10", "Tháng 10", "October", "Oct"],
+    ["11", "11", "Tháng 11", "November", "Nov"],
+    ["12", "12", "Tháng 12", "December", "Dec"],
+)
+
+
+def _shift_years(day: date, years: int) -> date:
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:
+        return day.replace(year=day.year - years, day=28)
+
+
+def _random_person() -> dict[str, str]:
+    given = random.choice(_GIVEN_NAMES)
+    family = random.choice(_FAMILY_NAMES)
+    return {"first": given, "last": family, "full": f"{family} {given}"}
+
+
+def _random_birthday() -> dict[str, list[str] | str]:
+    """Ngày sinh ngẫu nhiên, đủ 18 tuổi trở lên."""
+    today = date.today()
+    oldest = _shift_years(today, 45)
+    youngest = _shift_years(today, 18)
+    born = oldest + timedelta(days=random.randint(0, (youngest - oldest).days))
+    return {
+        "day": [str(born.day), f"{born.day:02d}"],
+        "month": list(_MONTH_LABELS[born.month]),
+        "year": [str(born.year)],
+        "label": f"{born.day:02d}/{born.month:02d}/{born.year}",
+    }
+
+
+def _fill_name(page: Page, person: dict[str, str] | None = None) -> bool:
+    """Điền tên ngẫu nhiên. Không thấy ô họ tên thì bỏ qua."""
+    targets = person or _random_person()
     filled = {"first": False, "last": False, "full": False}
     pending: list[tuple[object, str]] = []
     for frame in _frames(page):
@@ -1449,19 +1547,25 @@ def _has_visible_select(page: Page) -> bool:
     return False
 
 
-def _fill_birthday(page: Page) -> None:
-    """Ngày 25, tháng 07, năm 1999. Ô họ tên trên cùng trang thì điền luôn."""
+def _fill_birthday(
+    page: Page,
+    person: dict[str, str] | None = None,
+    birthday: dict[str, list[str] | str] | None = None,
+) -> None:
+    """Ngày sinh ngẫu nhiên, đủ 18 tuổi. Ô họ tên trên cùng trang thì điền luôn."""
+    person = person or _random_person()
+    birthday = birthday or _random_birthday()
     deadline = time.time() + 25
     while time.time() < deadline and not _text_visible(page, _BIRTHDAY_PAGE):
-        _fill_name(page)
+        _fill_name(page, person)
         page.wait_for_timeout(400)
     if not _text_visible(page, _BIRTHDAY_PAGE):
         raise RuntimeError("Đã nhập mã nhưng chưa thấy trang ngày sinh")
-    _fill_name(page)
+    _fill_name(page, person)
     wanted = {
-        "day": ["25"],
-        "month": ["7", "07", "Tháng 7", "July", "Jul"],
-        "year": ["1999"],
+        "day": list(birthday["day"]),
+        "month": list(birthday["month"]),
+        "year": list(birthday["year"]),
     }
     filled = {"day": False, "month": False, "year": False}
     for frame in _frames(page):
@@ -1484,7 +1588,7 @@ def _fill_birthday(page: Page) -> None:
                 filled[kind] = True
     missing = [name for name, ok in filled.items() if not ok]
     if missing:
-        raise RuntimeError("Chưa điền được ngày sinh 25/07/1999")
+        raise RuntimeError(f"Chưa điền được ngày sinh {birthday['label']}")
     page.wait_for_timeout(1500)
     clicked = False
     for _ in range(6):
@@ -1818,6 +1922,11 @@ def _submit_age_card(page: Page, on_progress: ProgressCallback | None) -> None:
                 _emit(on_progress, step="card", detail=f"Đã qua bước thẻ bằng {card.get('name')}")
                 _ack_disclosure(page, on_progress)
                 return
+            if _text_visible(page, CARD_BUSY):
+                _click_named_button(page, re.compile(r"^OK$|^Đồng ý$"))
+                raise RuntimeError(
+                    f"Muse báo quá nhiều lần thử với {card.get('name')} · ****{last4}. Thẻ vẫn giữ trong kho, chờ rồi tạo lại, không bấm Xác nhận tiếp."
+                )
             if _text_visible(page, CARD_BAD):
                 failed = True
                 break
@@ -1990,7 +2099,7 @@ def _muse_app_visible(page: Page) -> bool:
 def _wait_inside_muse(page: Page, on_progress: ProgressCallback | None) -> None:
     """Bấm Bắt đầu rồi chờ đúng tới khi tài khoản Muse hiện ra. Chưa hiện thì không đóng Chrome."""
     announced = False
-    for tick in range(90):
+    for tick in range(120):
         if stop_requested():
             raise RuntimeError("Đã dừng")
         if _captcha_visible(page):
@@ -2214,15 +2323,22 @@ def _ack_disclosure(page: Page, on_progress: ProgressCallback | None) -> None:
         raise RuntimeError("Thấy trang Một số điều cần biết nhưng chưa bấm được Bắt đầu")
 
 
-def _resolve_after_birthday(page: Page, on_progress: ProgressCallback | None) -> None:
+def _resolve_after_birthday(
+    page: Page,
+    on_progress: ProgressCallback | None,
+    *,
+    verified_us_ip: str = "",
+) -> None:
     for tick in range(60):
         if stop_requested():
             raise RuntimeError("Đã dừng")
-        if _text_visible(page, SIGNUP_BLOCKED) or _text_visible(page, MAIL_FLAGGED):
+        if _text_visible(page, SIGNUP_BLOCKED):
             page.wait_for_timeout(2000)
-            if _text_visible(page, SIGNUP_BLOCKED) or _text_visible(page, MAIL_FLAGGED):
+            if _text_visible(page, SIGNUP_BLOCKED):
+                ip_note = f" IP Mỹ {verified_us_ip} đã OK." if verified_us_ip else ""
                 raise RuntimeError(
-                    "Muse không cho tạo tài khoản mới. Có thể mail @fldubai.com bị đánh spam, không phải do proxy."
+                    "Muse chặn tạo tài khoản mới (You can't create a new account right now)."
+                    f"{ip_note} Không phải lỗi mail — thử proxy US khác hoặc tạo 1 TK/lần."
                 )
         if _card_form_visible(page):
             _emit(on_progress, step="card", detail="Thấy trang thẻ, lấy thẻ trong kho để điền")
@@ -2274,7 +2390,7 @@ def create_muse_account(
             err = LoginProgress(step="error", error=message or "Không mở được Chrome")
             _emit(on_progress, **err.__dict__)
             return err
-        context = browser.new_context(locale="vi-VN", viewport={"width": 1280, "height": 900})
+        context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
         context.add_init_script(_HIDE_WEBDRIVER)
         try:
             context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -2282,8 +2398,9 @@ def create_muse_account(
             pass
         page = context.new_page()
         page.set_default_timeout(20000)
+        verified_us_ip = ""
         try:
-            _require_us_exit(page, on_progress, using_proxy=bool(proxy_cfg))
+            verified_us_ip = _require_us_exit(page, on_progress, using_proxy=bool(proxy_cfg))
             if prepare_mail is not None:
                 email, mail_token, prepared_password = prepare_mail()
                 if prepared_password:
@@ -2357,14 +2474,16 @@ def create_muse_account(
                                 _click_named_button(page, BTN_NEXT)
                         break
                     page.wait_for_timeout(400)
-            _emit(on_progress, step="name", detail="Điền tên Han, họ Tran")
+            person = _random_person()
+            birthday = _random_birthday()
+            _emit(on_progress, step="name", detail=f"Điền tên {person['full']}")
             named = False
             for _ in range(15):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
                 if _text_visible(page, _BIRTHDAY_PAGE):
                     break
-                if _fill_name(page):
+                if _fill_name(page, person):
                     named = True
                     page.wait_for_timeout(800)
                     if not _text_visible(page, _BIRTHDAY_PAGE) and not _has_visible_select(page):
@@ -2373,10 +2492,10 @@ def create_muse_account(
                     break
                 page.wait_for_timeout(400)
             if named:
-                _emit(on_progress, step="name", detail="Đã điền tên Han, họ Tran")
-            _emit(on_progress, step="birthday", detail="Điền ngày sinh 25/07/1999")
-            _fill_birthday(page)
-            _resolve_after_birthday(page, on_progress)
+                _emit(on_progress, step="name", detail=f"Đã điền tên {person['full']}")
+            _emit(on_progress, step="birthday", detail=f"Điền ngày sinh {birthday['label']}")
+            _fill_birthday(page, person, birthday)
+            _resolve_after_birthday(page, on_progress, verified_us_ip=verified_us_ip)
             own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context)
             if not own_invite:
                 raise RuntimeError("Chưa trích xuất được mã giới thiệu vào tool")
@@ -2402,6 +2521,7 @@ def create_muse_account(
             err = LoginProgress(step="error", error=message)
             try:
                 err.final_url = page.url
+                page.screenshot(path=str(Path(os.environ.get("TEMP", ".")) / "muse-signup-error.png"))
             except Exception:
                 pass
             _emit(on_progress, **err.__dict__)
@@ -2463,10 +2583,7 @@ def login_muse(
             except Exception:
                 pass
             return err
-        context = browser.new_context(
-            locale="vi-VN",
-            viewport={"width": 1280, "height": 900},
-        )
+        context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
         context.add_init_script(_HIDE_WEBDRIVER)
         page = context.new_page()
         page.set_default_timeout(20000)

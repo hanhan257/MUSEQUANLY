@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent
-COOKIES_FILE = ROOT / "cookies.json"
-COOKIES_EXPORT_TXT = ROOT / "cookies_export.txt"
+from app_paths import DATA_DIR
+
+COOKIES_FILE = DATA_DIR / "cookies.json"
+COOKIES_EXPORT_TXT = DATA_DIR / "cookies_export.txt"
 
 MUSE_DOMAIN_PARTS = ("muse.ai", "meta.com", "facebook.com", "fb.com", "instagram.com")
 _io_lock = threading.RLock()

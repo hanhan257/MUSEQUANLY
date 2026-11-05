@@ -8,12 +8,12 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app_paths import DATA_DIR
 from cookie_store import get_account_cookies, token_from_cookie_header
 from lay2fa_client import parse_account_line
 
-ROOT = Path(__file__).resolve().parent
-WAREHOUSES_FILE = ROOT / "warehouses.json"
-ACCOUNTS_FILE = ROOT / "accounts.txt"
+WAREHOUSES_FILE = DATA_DIR / "warehouses.json"
+ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 ACCOUNTS_PER_WAREHOUSE = 50
 CREATED_PER_WAREHOUSE = 50
 _CREATED_LOCK = threading.Lock()

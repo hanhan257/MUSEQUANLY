@@ -10,6 +10,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
+from app_paths import BUNDLE_DIR, DATA_DIR, is_frozen
 from cookie_store import (
     export_bulk,
     export_clipboard_text,
@@ -20,7 +21,15 @@ from cookie_store import (
     token_from_cookie_header,
 )
 from lay2fa_client import get_latest_muse_code, parse_account_line
-from muse_automation import LoginProgress, clear_stop, create_muse_account, login_muse, request_stop, stop_requested
+from muse_automation import (
+    LoginProgress,
+    clear_stop,
+    create_muse_account,
+    login_muse,
+    normalize_proxy_line,
+    request_stop,
+    stop_requested,
+)
 from warehouse_store import (
     ACCOUNTS_PER_WAREHOUSE,
     add_card_warehouse,
@@ -52,10 +61,9 @@ from warehouse_store import (
     warehouse_emails,
 )
 
-ROOT = Path(__file__).resolve().parent
-ACCOUNTS_FILE = ROOT / "accounts.txt"
+ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v55"
+APP_BUILD = "signup-v60"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -64,7 +72,10 @@ PROXY_PARALLEL = 5
 
 ensure_initialized()
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(BUNDLE_DIR / "templates") if (BUNDLE_DIR / "templates").is_dir() else "templates",
+)
 
 
 @app.after_request
@@ -123,11 +134,14 @@ def index():
 def api_version():
     import os
 
-    auto_reload = os.environ.get("FLASK_RELOAD", "1") != "0"
+    packaged = is_frozen()
+    auto_reload = not packaged and os.environ.get("FLASK_RELOAD", "1") != "0"
     return jsonify(
         {
             "build": APP_BUILD,
             "auto_reload": auto_reload,
+            "packaged": packaged,
+            "data_dir": str(DATA_DIR),
             "consent_status": "https://muse.ai/api/consent/status",
         }
     )
@@ -1041,7 +1055,7 @@ def api_signup():
         count = int(raw_count)
     except (TypeError, ValueError):
         count = 1 if raw_count in (None, "") else 0
-    proxies = [line.strip() for line in (body.get("proxies") or "").splitlines() if line.strip()]
+    proxies = [normalize_proxy_line(line) for line in (body.get("proxies") or "").splitlines() if normalize_proxy_line(line)]
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
     if proxies and len(proxies) < count:
@@ -1237,7 +1251,7 @@ def api_login_status(job_id: str):
 
 def _watch_files() -> list[str]:
     paths: list[str] = []
-    templates = ROOT / "templates"
+    templates = BUNDLE_DIR / "templates"
     if templates.is_dir():
         paths.extend(str(p) for p in templates.rglob("*") if p.is_file())
     for name in (
@@ -1248,7 +1262,7 @@ def _watch_files() -> list[str]:
         "lay2fa_client.py",
         "mailtm_client.py",
     ):
-        p = ROOT / name
+        p = BUNDLE_DIR / name
         if p.is_file():
             paths.append(str(p))
     return paths
@@ -1257,12 +1271,25 @@ def _watch_files() -> list[str]:
 def main() -> None:
     import os
 
-    os.environ.setdefault("FLASK_RELOAD", "1")
+    frozen = is_frozen()
+    if frozen:
+        os.environ["FLASK_RELOAD"] = "0"
+    else:
+        os.environ.setdefault("FLASK_RELOAD", "1")
     port = int(os.environ.get("PORT", "8765"))
     url = f"http://127.0.0.1:{port}"
-    auto_reload = os.environ.get("FLASK_RELOAD", "1") != "0"
+    auto_reload = not frozen and os.environ.get("FLASK_RELOAD", "1") != "0"
     debug = auto_reload
     is_worker = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if frozen:
+        print(f"Muse Manager: {url}")
+        print(f"Dữ liệu kho/cookie: {DATA_DIR}")
+        if os.environ.get("NO_BROWSER") != "1":
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        from waitress import serve
+
+        serve(app, host="127.0.0.1", port=port, threads=8)
+        return
     print(f"Muse Account Manager: {url}" + (" · auto-reload ON" if auto_reload else ""))
     if not is_worker and os.environ.get("NO_BROWSER") != "1":
         webbrowser.open(url)
