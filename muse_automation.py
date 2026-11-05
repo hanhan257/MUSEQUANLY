@@ -2592,18 +2592,14 @@ def login_muse(
             page.goto(MUSE_URL, wait_until="domcontentloaded", timeout=90000)
             page.wait_for_timeout(1500)
 
-            _emit(on_progress, step="email", detail=f"Nhập email {email}")
-            if mailbox_password:
-                _submit_signup_email(page, email)
-            else:
-                email_input = page.get_by_placeholder(EMAIL_PLACEHOLDER)
-                email_input.wait_for(state="visible", timeout=30000)
-                email_input.fill(email)
-                page.get_by_role("button", name=BTN_CONTINUE).click(no_wait_after=True)
-                try:
-                    page.wait_for_load_state("domcontentloaded", timeout=45000)
-                except Exception:
-                    pass
+            _emit(on_progress, step="email", detail=f"Chờ Muse load xong rồi nhập email {email}")
+            # Cả hai dạng tài khoản (có mật khẩu hộp thư hay dạng mật khẩu/2FA)
+            # đều phải chờ form email ổn định rồi mới nhập. Nhánh cũ nhập ngay
+            # khi ô vừa hiện, lúc Muse chưa load xong: trang hydrate/load lại
+            # sẽ thay ô input và làm mất email vừa nhập.
+            # _submit_signup_email đã gồm cả hai việc: chờ Muse load xong mới
+            # nhập, và tự nhập lại nếu trang load lại làm mất email.
+            _submit_signup_email(page, email)
 
             _emit(on_progress, step="wait_otp_mail", detail="Chờ mã hoặc màn hình xác nhận…")
             otp_input = page.locator('input[autocomplete="one-time-code"]')
