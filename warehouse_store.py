@@ -753,6 +753,20 @@ def get_proxy_for_email(email: str) -> str:
     return (found[1].get("proxy") or "").strip()
 
 
+def get_account_password_for_email(email: str) -> str:
+    data = ensure_initialized()
+    found = _find_account(data, email)
+    if not found:
+        return ""
+    raw = (found[1].get("lay2fa_url") or "").strip()
+    if not raw:
+        return ""
+    lower = raw.lower()
+    if lower.startswith(("http://", "https://")) or "://" in lower or lower.startswith("lay2fa"):
+        return ""
+    return raw
+
+
 def get_totp_secret_for_email(email: str) -> str:
     data = ensure_initialized()
     found = _find_account(data, email)

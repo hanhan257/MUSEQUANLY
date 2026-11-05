@@ -58,22 +58,29 @@ def email_from_lay2fa_url(url: str) -> str | None:
 
 
 def parse_account_line(line: str) -> tuple[str, str, str] | None:
-    """email|lay2fa|mã 2FA — mã 2FA có thể có dấu cách, ví dụ OP73 7X6Q POFO JANG."""
+    """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
     parts = [part.strip() for part in line.split("|")]
-    secret = ""
-    if len(parts) >= 3:
-        email = parts[0]
-        url = normalize_lay2fa_url(parts[1], email)
-        secret = " ".join(" ".join(parts[2:]).split())
-    elif len(parts) == 2:
-        email = parts[0]
-        url = normalize_lay2fa_url(parts[1], email)
+    if not parts or not parts[0]:
+        return None
+
+    email = parts[0]
+    rest = " ".join(parts[1:]).split()
+    second = parts[1] if len(parts) > 1 else ""
+    secret = " ".join(rest[1:]) if len(parts) >= 3 else ""
+
+    if len(parts) >= 3 and second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
+        url = second
+        secret = " ".join(parts[2:]) if len(parts) > 2 else ""
+    elif len(parts) >= 2 and second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
+        url = second
+        secret = ""
     else:
-        email = parts[0]
-        url = normalize_lay2fa_url("", email)
+        url = normalize_lay2fa_url(second if len(parts) > 1 else "", email)
+        secret = " ".join(parts[2:]) if len(parts) > 2 else ""
+
     if "@" not in email:
         inferred = email_from_lay2fa_url(url)
         if inferred:
