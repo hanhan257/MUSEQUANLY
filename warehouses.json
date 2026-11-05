@@ -811,5 +811,246 @@
       "kind": "error",
       "accounts": []
     }
+  ],
+  "created_accounts": [],
+  "created_warehouses": [
+    {
+      "id": "9a19d3719a",
+      "name": "Kho 1",
+      "kind": "plain",
+      "accounts": [
+        {
+          "email": "377mpriqnra4@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:47",
+          "kind": "plain",
+          "proxy": "23.27.236.216:6952:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "4l900o38fe6p@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:48",
+          "kind": "plain",
+          "proxy": "23.236.247.118:8150:pexmqfcj:y8d7o9w7j0uz"
+        }
+      ]
+    },
+    {
+      "id": "48326ee4c3",
+      "name": "Kho 1",
+      "kind": "password",
+      "accounts": [
+        {
+          "email": "han326045270@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:41",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-57:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han608209609@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:41",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-135:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han024677716@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:41",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-132:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han252519033@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:42",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-61:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han374786982@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:42",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-122:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han508832847@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:42",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-58:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han642726715@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:42",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-59:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han177804308@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:43",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-94:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han588251685@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:43",
+          "kind": "password",
+          "proxy": "p.webshare.io:80:dvlnmwwb-14:7bo8tx8hb4kq"
+        },
+        {
+          "email": "han204166723@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:44",
+          "kind": "password",
+          "proxy": "198.23.243.226"
+        },
+        {
+          "email": "han245859608@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:53",
+          "kind": "password",
+          "proxy": "198.89.123.148:6690:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han024753611@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 16:53",
+          "kind": "password",
+          "proxy": "154.6.116.194:6163:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han382263583@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:13",
+          "kind": "password",
+          "proxy": "154.6.116.194:6163:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han550960302@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:26",
+          "kind": "password",
+          "proxy": "198.89.123.148:6690:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han219996418@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:26",
+          "kind": "password",
+          "proxy": "152.232.120.76:5838:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han727994655@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:26",
+          "kind": "password",
+          "proxy": "154.6.116.194:6163:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han418315995@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:30",
+          "kind": "password",
+          "proxy": "198.89.123.148:6690:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han477884764@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:30",
+          "kind": "password",
+          "proxy": "154.6.116.194:6163:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han976511506@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:30",
+          "kind": "password",
+          "proxy": "152.232.120.76:5838:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han550833214@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:46",
+          "kind": "password",
+          "proxy": "198.89.123.148:6690:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han116730501@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:46",
+          "kind": "password",
+          "proxy": "154.6.116.194:6163:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han371837876@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:46",
+          "kind": "password",
+          "proxy": "152.232.120.76:5838:pexmqfcj:y8d7o9w7j0uz"
+        }
+      ]
+    },
+    {
+      "id": "dc9ad673eb",
+      "name": "Kho 2",
+      "kind": "password",
+      "accounts": [
+        {
+          "email": "han472965856@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:53",
+          "kind": "password",
+          "proxy": "23.27.236.216:6952:pexmqfcj:y8d7o9w7j0uz"
+        },
+        {
+          "email": "han001853681@fldubai.com",
+          "mailtm_password": "Congphu21@",
+          "created_at": "05/11/2026 17:53",
+          "kind": "password",
+          "proxy": "23.236.247.118:8150:pexmqfcj:y8d7o9w7j0uz"
+        }
+      ]
+    }
+  ],
+  "active_created_warehouse_id": "3bcc19b277",
+  "active_created_plain_id": "9a19d3719a",
+  "active_created_password_id": "48326ee4c3",
+  "card_warehouses": [
+    {
+      "id": "7d969d6017",
+      "name": "Kho 1",
+      "status": "",
+      "card": {
+        "number": "4367970168052507",
+        "expiry": "10/29",
+        "cvv": "771"
+      }
+    },
+    {
+      "id": "27f5dada41",
+      "name": "Kho 2",
+      "status": "",
+      "card": {
+        "number": "4367970160729466",
+        "expiry": "11/29",
+        "cvv": "814"
+      }
+    },
+    {
+      "id": "5b1926f210",
+      "name": "Kho 3",
+      "status": "",
+      "card": {
+        "number": "4367970161842060",
+        "expiry": "11/29",
+        "cvv": "379"
+      }
+    }
   ]
 }

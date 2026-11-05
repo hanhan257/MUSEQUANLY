@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
+from cookie_store import get_account_cookies, token_from_cookie_header
 from lay2fa_client import parse_account_line
 
 ROOT = Path(__file__).resolve().parent
 WAREHOUSES_FILE = ROOT / "warehouses.json"
 ACCOUNTS_FILE = ROOT / "accounts.txt"
 ACCOUNTS_PER_WAREHOUSE = 50
+CREATED_PER_WAREHOUSE = 50
+_CREATED_LOCK = threading.Lock()
 
 
 def _default_state() -> dict[str, Any]:
@@ -23,17 +27,21 @@ def _load() -> dict[str, Any]:
     if not WAREHOUSES_FILE.exists():
         return _default_state()
     try:
-        data = json.loads(WAREHOUSES_FILE.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return _default_state()
-        data.setdefault("warehouses", [])
-        return data
-    except (json.JSONDecodeError, OSError):
-        return _default_state()
+        raw = WAREHOUSES_FILE.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError("warehouses.json đang hỏng, không ghi đè file kho.") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("warehouses.json đang hỏng, không ghi đè file kho.")
+    data.setdefault("warehouses", [])
+    return data
 
 
 def _save(data: dict[str, Any]) -> None:
-    WAREHOUSES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp = WAREHOUSES_FILE.with_suffix(".json.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(WAREHOUSES_FILE)
     _sync_accounts_txt(data)
 
 
@@ -42,7 +50,7 @@ def _sync_accounts_txt(data: dict[str, Any]) -> None:
     if not wh:
         ACCOUNTS_FILE.write_text("", encoding="utf-8")
         return
-    lines = [f"{a['email']}|{a['lay2fa_url']}" for a in wh.get("accounts", [])]
+    lines = [_account_line(a) for a in wh.get("accounts", [])]
     ACCOUNTS_FILE.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
@@ -68,6 +76,14 @@ def migrate_from_legacy_accounts_txt() -> None:
     _save(data)
 
 
+def _account_line(account: dict[str, str]) -> str:
+    line = f"{account['email']}|{account.get('lay2fa_url', '')}"
+    secret = (account.get("totp_secret") or "").strip()
+    if secret:
+        line += f"|{secret}"
+    return line
+
+
 def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
     proxy_lines = (proxies_raw or "").splitlines()
     rows: list[dict[str, str]] = []
@@ -77,14 +93,16 @@ def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url = parsed
+        email, lay2fa_url, totp_secret = parsed
         key = email.lower()
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
         index += 1
         if key in seen:
             continue
         seen.add(key)
-        rows.append({"email": email, "lay2fa_url": lay2fa_url, "proxy": proxy})
+        rows.append(
+            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy}
+        )
     return rows
 
 
@@ -148,9 +166,36 @@ def ensure_initialized() -> dict[str, Any]:
     if not data.get("active_warehouse_id"):
         data["active_warehouse_id"] = _regular_warehouses(data)[0]["id"]
         changed = True
+    if _detach_created_accounts(data):
+        changed = True
+    if _pack_created_warehouses(data):
+        changed = True
+    if _split_created_by_kind(data):
+        changed = True
     if changed:
         _save(data)
     return _load()
+
+
+def _detach_created_accounts(data: dict[str, Any]) -> bool:
+    """Mail tạo bằng tool không nằm trong kho thường."""
+    created = data.setdefault("created_accounts", [])
+    known = {(acc.get("email") or "").strip().lower() for acc in created}
+    changed = False
+    for wh in data.get("warehouses") or []:
+        kept = []
+        for acc in wh.get("accounts") or []:
+            if acc.get("mailtm_password"):
+                key = (acc.get("email") or "").strip().lower()
+                if key and key not in known:
+                    created.append(acc)
+                    known.add(key)
+                changed = True
+                continue
+            kept.append(acc)
+        if len(kept) != len(wh.get("accounts") or []):
+            wh["accounts"] = kept
+    return changed
 
 
 def get_warehouse(warehouse_id: str | None, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -223,6 +268,25 @@ def get_accounts_for_warehouse(warehouse_id: str | None = None) -> list[dict[str
     return list(get_active_warehouse().get("accounts", []))
 
 
+def _mailtm_passwords(data: dict[str, Any]) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for wh in data.get("warehouses") or []:
+        for acc in wh.get("accounts") or []:
+            key = (acc.get("email") or "").strip().lower()
+            password = acc.get("mailtm_password") or ""
+            if key and password:
+                found[key] = password
+    return found
+
+
+def _keep_mailtm_password(row: dict[str, str], known: dict[str, str]) -> dict[str, str]:
+    item = dict(row)
+    key = (item.get("email") or "").strip().lower()
+    if not item.get("mailtm_password") and known.get(key):
+        item["mailtm_password"] = known[key]
+    return item
+
+
 def save_active_accounts(rows: list[dict[str, str]]) -> None:
     data = ensure_initialized()
     wh_id = data.get("active_warehouse_id")
@@ -231,7 +295,8 @@ def save_active_accounts(rows: list[dict[str, str]]) -> None:
         return
     if not _is_error_warehouse(wh) and len(rows) > ACCOUNTS_PER_WAREHOUSE:
         raise ValueError(f"Mỗi kho tối đa {ACCOUNTS_PER_WAREHOUSE} tài khoản.")
-    wh["accounts"] = rows
+    known = _mailtm_passwords(data)
+    wh["accounts"] = [_keep_mailtm_password(row, known) for row in rows]
     _save(data)
 
 
@@ -241,6 +306,8 @@ def import_split_replace(raw: str, proxies_raw: str = "") -> dict[str, Any]:
     if not accounts:
         raise ValueError("Không có tài khoản trong nội dung dán. Kho hiện tại được giữ nguyên.")
     data = ensure_initialized()
+    known = _mailtm_passwords(data)
+    accounts = [_keep_mailtm_password(row, known) for row in accounts]
     error = _ensure_error_warehouse(data)
     pasted = {a["email"].lower() for a in accounts}
     error["accounts"] = [
@@ -309,6 +376,294 @@ def rename_warehouse(warehouse_id: str, name: str) -> bool:
     return True
 
 
+def _created_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for wh in data.get("created_warehouses") or []:
+        rows.extend(wh.get("accounts") or [])
+    rows.extend(data.get("created_accounts") or [])
+    return rows
+
+
+def _account_kind(acc: dict[str, Any]) -> str:
+    marked = acc.get("kind")
+    if marked in ("plain", "password"):
+        return marked
+    local = (acc.get("email") or "").split("@", 1)[0]
+    password = acc.get("mailtm_password") or ""
+    if len(local) == 12 and local.startswith("han") and local[3:].isdigit() and password == "Congphu21@":
+        return "password"
+    return "plain"
+
+
+def _append_created_row(data: dict[str, Any], row: dict[str, Any], kind: str = "plain") -> dict[str, Any]:
+    kind = "password" if kind == "password" else "plain"
+    warehouses = data.setdefault("created_warehouses", [])
+    same = [wh for wh in warehouses if wh.get("kind") == kind]
+    active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
+    active = next((wh for wh in same if wh.get("id") == data.get(active_key)), None)
+    if active is not None and len(active.get("accounts") or []) < CREATED_PER_WAREHOUSE:
+        target = active
+    else:
+        target = next((wh for wh in same if len(wh.get("accounts") or []) < CREATED_PER_WAREHOUSE), None)
+    if target is None:
+        target = {"id": _new_id(), "name": f"Kho {len(same) + 1}", "kind": kind, "accounts": []}
+        warehouses.append(target)
+    row["kind"] = kind
+    target.setdefault("accounts", []).append(row)
+    data[active_key] = target["id"]
+    return target
+
+
+def create_created_warehouse(kind: str = "plain", name: str | None = None) -> dict[str, Any]:
+    """Kho trống riêng cho mail không mật khẩu hoặc mail có mật khẩu."""
+    kind = "password" if kind == "password" else "plain"
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        warehouses = data.setdefault("created_warehouses", [])
+        same = [wh for wh in warehouses if wh.get("kind") == kind]
+        numbers = []
+        for wh in same:
+            parts = (wh.get("name") or "").split()
+            if len(parts) == 2 and parts[0] == "Kho" and parts[1].isdigit():
+                numbers.append(int(parts[1]))
+        number = (max(numbers) if numbers else len(same)) + 1
+        wh = {
+            "id": _new_id(),
+            "name": (name or "").strip() or f"Kho {number}",
+            "kind": kind,
+            "accounts": [],
+        }
+        warehouses.append(wh)
+        key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
+        data[key] = wh["id"]
+        _save(data)
+        return wh
+
+
+def _pack_created_warehouses(data: dict[str, Any]) -> bool:
+    """Gom mail đã tạo thành kho riêng, 50 tài khoản một kho."""
+    changed = False
+    warehouses = data.get("created_warehouses")
+    if warehouses is None:
+        data["created_warehouses"] = []
+        warehouses = data["created_warehouses"]
+        changed = True
+    known = {
+        (acc.get("email") or "").strip().lower()
+        for wh in warehouses
+        for acc in (wh.get("accounts") or [])
+    }
+    for acc in list(data.get("created_accounts") or []):
+        key = (acc.get("email") or "").strip().lower()
+        if not key or key in known:
+            continue
+        _append_created_row(data, acc, _account_kind(acc))
+        known.add(key)
+        changed = True
+    if data.get("created_accounts"):
+        data["created_accounts"] = []
+        changed = True
+    if not data["created_warehouses"]:
+        data["created_warehouses"].append({"id": _new_id(), "name": "Kho 1", "accounts": []})
+        changed = True
+    if not data.get("active_created_warehouse_id"):
+        data["active_created_warehouse_id"] = data["created_warehouses"][0]["id"]
+        changed = True
+    return changed
+
+
+def _created_account_view(acc: dict[str, Any]) -> dict[str, Any]:
+    email = acc.get("email") or ""
+    rec = get_account_cookies(email) or {}
+    header = rec.get("cookie_header") or rec.get("muse_cookie_header") or ""
+    return {
+        "email": email,
+        "created_at": acc.get("created_at") or "",
+        "password": acc.get("mailtm_password") or "",
+        "proxy": acc.get("proxy") or "",
+        "invite_code": acc.get("invite_code") or "",
+        "has_cookie": bool(header),
+        "cookie_header": header,
+        "cookie_saved_at": rec.get("saved_at") or "",
+        "muse_token": rec.get("muse_token") or token_from_cookie_header(header),
+        "account_status": rec.get("account_status") or "",
+        "login_error": rec.get("login_error") or "",
+    }
+
+
+def find_created_account(email: str) -> dict[str, Any] | None:
+    """Mail đã tạo, kèm mật khẩu hộp thư để lần sau vẫn lấy được mã."""
+    data = ensure_initialized()
+    key = (email or "").strip().lower()
+    if not key:
+        return None
+    for acc in _created_rows(data):
+        if (acc.get("email") or "").strip().lower() == key:
+            return acc
+    return None
+
+
+def _split_created_by_kind(data: dict[str, Any]) -> bool:
+    """Kho có mật khẩu và kho không mật khẩu không dùng chung danh sách."""
+    warehouses = data.setdefault("created_warehouses", [])
+    mixed = False
+    for wh in warehouses:
+        accounts = wh.get("accounts") or []
+        kinds = {_account_kind(acc) for acc in accounts}
+        if wh.get("kind") not in ("plain", "password") or len(kinds) > 1:
+            mixed = True
+            break
+        if accounts and wh.get("kind") not in kinds:
+            mixed = True
+            break
+    changed = False
+    if mixed:
+        grouped: dict[str, list[dict[str, Any]]] = {"plain": [], "password": []}
+        for wh in warehouses:
+            for acc in wh.get("accounts") or []:
+                kind = _account_kind(acc)
+                acc["kind"] = kind
+                grouped[kind].append(acc)
+
+        def _chunks(rows: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
+            if not rows:
+                return [{"id": _new_id(), "name": "Kho 1", "kind": kind, "accounts": []}]
+            out = []
+            for index in range(0, len(rows), CREATED_PER_WAREHOUSE):
+                number = index // CREATED_PER_WAREHOUSE + 1
+                out.append(
+                    {
+                        "id": _new_id(),
+                        "name": f"Kho {number}",
+                        "kind": kind,
+                        "accounts": rows[index : index + CREATED_PER_WAREHOUSE],
+                    }
+                )
+            return out
+
+        data["created_warehouses"] = _chunks(grouped["plain"], "plain") + _chunks(grouped["password"], "password")
+        warehouses = data["created_warehouses"]
+        changed = True
+    for kind in ("plain", "password"):
+        if not any(wh.get("kind") == kind for wh in warehouses):
+            warehouses.append({"id": _new_id(), "name": "Kho 1", "kind": kind, "accounts": []})
+            changed = True
+    for kind, key in (("plain", "active_created_plain_id"), ("password", "active_created_password_id")):
+        group = [wh for wh in warehouses if wh.get("kind") == kind]
+        if data.get(key) not in {wh.get("id") for wh in group}:
+            data[key] = group[0]["id"]
+            changed = True
+    return changed
+
+
+def list_created_accounts(warehouse_id: str | None = None, kind: str = "plain") -> dict[str, Any]:
+    data = ensure_initialized()
+    kind = "password" if kind == "password" else "plain"
+    warehouses = [wh for wh in data.get("created_warehouses") or [] if wh.get("kind") == kind]
+    active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
+    active_id = warehouse_id or data.get(active_key)
+    current = next((wh for wh in warehouses if wh.get("id") == active_id), None)
+    if current is None and warehouses:
+        current = warehouses[0]
+    summary = [
+        {
+            "id": wh.get("id"),
+            "name": wh.get("name") or "Kho",
+            "count": len(wh.get("accounts") or []),
+            "max": CREATED_PER_WAREHOUSE,
+            "kind": kind,
+            "active": current is not None and wh.get("id") == current.get("id"),
+        }
+        for wh in warehouses
+    ]
+    accounts = [_created_account_view(acc) for acc in (current.get("accounts") or [])] if current else []
+    return {
+        "active_id": current.get("id") if current else None,
+        "kind": kind,
+        "warehouses": summary,
+        "accounts": accounts,
+    }
+
+
+def set_active_created_warehouse(warehouse_id: str) -> bool:
+    data = ensure_initialized()
+    match = next((wh for wh in data.get("created_warehouses") or [] if wh.get("id") == warehouse_id), None)
+    if not match:
+        return False
+    key = "active_created_password_id" if match.get("kind") == "password" else "active_created_plain_id"
+    data[key] = warehouse_id
+    _save(data)
+    return True
+
+
+def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "plain", proxy: str = "") -> dict[str, Any]:
+    """Lưu mail vào kho tạo riêng. Đủ 50 thì sang kho tiếp theo."""
+    from datetime import datetime
+
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        key = email.strip().lower()
+        for acc in _created_rows(data):
+            if (acc.get("email") or "").strip().lower() == key:
+                changed = False
+                if mailtm_password and not acc.get("mailtm_password"):
+                    acc["mailtm_password"] = mailtm_password
+                    changed = True
+                if proxy and not acc.get("proxy"):
+                    acc["proxy"] = proxy
+                    changed = True
+                if changed:
+                    _save(data)
+                return {"email": acc.get("email") or email.strip(), "already": True}
+        kind = "password" if kind == "password" else "plain"
+        row = {
+            "email": email.strip(),
+            "mailtm_password": mailtm_password,
+            "created_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "kind": kind,
+            "proxy": (proxy or "").strip(),
+        }
+        target = _append_created_row(data, row, kind)
+        _save(data)
+        return {
+            "email": row["email"],
+            "already": False,
+            "warehouse_id": target.get("id"),
+            "warehouse_name": target.get("name") or "Kho",
+        }
+
+
+def set_created_invite_code(email: str, code: str) -> None:
+    """Ghi mã lời mời lên dòng mail vừa tạo."""
+    code = (code or "").strip().upper()
+    if not code:
+        return
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        key = email.strip().lower()
+        for acc in _created_rows(data):
+            if (acc.get("email") or "").strip().lower() == key:
+                acc["invite_code"] = code
+                _save(data)
+                return
+
+
+def latest_invite_code() -> str:
+    """Mã của tài khoản cuối chuỗi đã tạo xong."""
+    data = ensure_initialized()
+    return (data.get("invite_chain_code") or "").strip().upper()
+
+
+def set_invite_chain_code(code: str) -> None:
+    code = (code or "").strip().upper()
+    if not code:
+        return
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        data["invite_chain_code"] = code
+        _save(data)
+
+
 def create_warehouse(name: str | None = None) -> dict[str, Any]:
     data = ensure_initialized()
     n = len(_regular_warehouses(data)) + 1
@@ -345,6 +700,7 @@ def move_account_to_error(email: str) -> dict[str, Any]:
     moved = {
         "email": acc["email"],
         "lay2fa_url": acc.get("lay2fa_url", ""),
+        "totp_secret": acc.get("totp_secret", ""),
         "proxy": acc.get("proxy", ""),
         "from_warehouse_id": source.get("id"),
         "from_warehouse_name": source.get("name") or "Kho",
@@ -378,7 +734,12 @@ def restore_account_from_error(email: str) -> dict[str, Any]:
         target = {"id": _new_id(), "name": f"Kho {n}", "accounts": []}
         data["warehouses"].insert(data["warehouses"].index(error), target)
     target.setdefault("accounts", []).append(
-        {"email": acc["email"], "lay2fa_url": acc.get("lay2fa_url", ""), "proxy": acc.get("proxy", "")}
+        {
+            "email": acc["email"],
+            "lay2fa_url": acc.get("lay2fa_url", ""),
+            "totp_secret": acc.get("totp_secret", ""),
+            "proxy": acc.get("proxy", ""),
+        }
     )
     _save(data)
     return {"email": acc["email"], "warehouse_id": target["id"], "warehouse_name": target.get("name")}
@@ -392,5 +753,100 @@ def get_proxy_for_email(email: str) -> str:
     return (found[1].get("proxy") or "").strip()
 
 
+def get_totp_secret_for_email(email: str) -> str:
+    data = ensure_initialized()
+    found = _find_account(data, email)
+    if not found:
+        return ""
+    return (found[1].get("totp_secret") or "").strip()
+
+
 def warehouse_emails(warehouse_id: str | None = None) -> list[str]:
     return [a["email"] for a in get_accounts_for_warehouse(warehouse_id)]
+
+
+def _card_digits(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _normalize_expiry(value: str) -> str:
+    digits = _card_digits(value)
+    if len(digits) == 4:
+        month = int(digits[:2])
+        if month < 1 or month > 12:
+            raise ValueError("Ngày thẻ phải là MM/YY")
+        return f"{digits[:2]}/{digits[2:]}"
+    raise ValueError("Ngày thẻ phải là MM/YY")
+
+
+def list_card_warehouses() -> dict[str, Any]:
+    data = ensure_initialized()
+    rows = []
+    for wh in data.get("card_warehouses") or []:
+        card = wh.get("card") or {}
+        rows.append(
+            {
+                "id": wh.get("id"),
+                "name": wh.get("name") or "Kho",
+                "number": card.get("number") or "",
+                "expiry": card.get("expiry") or "",
+                "cvv": card.get("cvv") or "",
+                "status": wh.get("status") or "",
+            }
+        )
+    return {"warehouses": rows}
+
+
+def usable_card_warehouses() -> list[dict[str, Any]]:
+    return [row for row in list_card_warehouses()["warehouses"] if row.get("number") and row.get("status") != "error"]
+
+
+def add_card_warehouse(number: str, expiry: str, cvv: str) -> dict[str, Any]:
+    """Mỗi kho chỉ giữ một thẻ do người dùng tự nhập."""
+    pan = _card_digits(number)
+    code = _card_digits(cvv)
+    if len(pan) < 13 or len(pan) > 19:
+        raise ValueError("Số thẻ chưa đúng")
+    if len(code) not in (3, 4):
+        raise ValueError("CVV phải có 3 hoặc 4 số")
+    exp = _normalize_expiry(expiry)
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        warehouses = data.setdefault("card_warehouses", [])
+        numbers = []
+        for wh in warehouses:
+            parts = (wh.get("name") or "").split()
+            if len(parts) == 2 and parts[0] == "Kho" and parts[1].isdigit():
+                numbers.append(int(parts[1]))
+        name = f"Kho {(max(numbers) if numbers else 0) + 1}"
+        wh = {
+            "id": _new_id(),
+            "name": name,
+            "status": "",
+            "card": {"number": pan, "expiry": exp, "cvv": code},
+        }
+        warehouses.append(wh)
+        _save(data)
+        return {"id": wh["id"], "name": name, "number": pan, "expiry": exp, "cvv": code, "status": ""}
+
+
+def mark_card_warehouse_bad(warehouse_id: str) -> None:
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        for wh in data.get("card_warehouses") or []:
+            if wh.get("id") == warehouse_id:
+                wh["status"] = "error"
+                _save(data)
+                return
+
+
+def delete_card_warehouse(warehouse_id: str) -> bool:
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        rows = data.get("card_warehouses") or []
+        kept = [wh for wh in rows if wh.get("id") != warehouse_id]
+        if len(kept) == len(rows):
+            return False
+        data["card_warehouses"] = kept
+        _save(data)
+        return True

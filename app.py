@@ -20,31 +20,47 @@ from cookie_store import (
     token_from_cookie_header,
 )
 from lay2fa_client import get_latest_muse_code, parse_account_line
-from muse_automation import LoginProgress, clear_stop, login_muse, request_stop, stop_requested
+from muse_automation import LoginProgress, clear_stop, create_muse_account, login_muse, request_stop, stop_requested
 from warehouse_store import (
     ACCOUNTS_PER_WAREHOUSE,
+    add_card_warehouse,
+    add_created_account,
+    create_created_warehouse,
+    delete_card_warehouse,
+    list_card_warehouses,
+    list_created_accounts,
+    set_active_created_warehouse,
     create_warehouse,
     ensure_initialized,
+    find_created_account,
     get_accounts_for_warehouse,
     get_active_warehouse,
     get_proxy_for_email,
+    get_totp_secret_for_email,
     get_warehouse,
     import_split_append,
     import_split_replace,
+    latest_invite_code,
     list_warehouses_summary,
     move_account_to_error,
     rename_warehouse,
     restore_account_from_error,
     save_active_accounts,
     set_active_warehouse,
+    set_created_invite_code,
+    set_invite_chain_code,
     warehouse_emails,
 )
 
 ROOT = Path(__file__).resolve().parent
 ACCOUNTS_FILE = ROOT / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "stop-run-v23"
+APP_BUILD = "signup-v55"
+SIGNUP_COUNTS = (1, 5, 10, 50)
+ACCOUNT_PASSWORD = "Congphu21@"
+SIGNUP_MAX = 200
 BATCH_PARALLEL = 5
+PROXY_PARALLEL = 5
 
 ensure_initialized()
 
@@ -72,6 +88,8 @@ def _enrich_accounts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             {
                 "email": email,
                 "lay2fa_url": row["lay2fa_url"],
+                "totp_secret": row.get("totp_secret") or "",
+                "proxy": row.get("proxy") or "",
                 "has_cookie": bool(cookie_rec and cookie_rec.get("cookie_header")),
                 "cookie_saved_at": (cookie_rec or {}).get("saved_at"),
                 "cookie_count": (cookie_rec or {}).get("count", 0),
@@ -209,14 +227,16 @@ def api_save_accounts():
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url = parsed
+        email, lay2fa_url, totp_secret = parsed
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
         index += 1
         key = email.lower()
         if key in seen:
             continue
         seen.add(key)
-        rows.append({"email": email, "lay2fa_url": lay2fa_url, "proxy": proxy})
+        rows.append(
+            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy}
+        )
     active = get_active_warehouse()
     if active.get("kind") != "error" and len(rows) > ACCOUNTS_PER_WAREHOUSE:
         return jsonify(
@@ -239,11 +259,17 @@ def api_import_accounts():
         parsed = parse_account_line(str(line))
         if not parsed:
             continue
-        email, lay2fa_url = parsed
+        email, lay2fa_url, totp_secret = parsed
         key = email.lower()
         if key not in by_email:
             added += 1
-        by_email[key] = {"email": email, "lay2fa_url": lay2fa_url}
+        previous = by_email.get(key) or {}
+        by_email[key] = {
+            "email": email,
+            "lay2fa_url": lay2fa_url,
+            "totp_secret": totp_secret or previous.get("totp_secret", ""),
+            "proxy": previous.get("proxy", ""),
+        }
     merged = list(by_email.values())
     if len(merged) > ACCOUNTS_PER_WAREHOUSE:
         return jsonify({"ok": False, "error": f"Kho hiện tại tối đa {ACCOUNTS_PER_WAREHOUSE} TK."}), 400
@@ -251,9 +277,33 @@ def api_import_accounts():
     return jsonify({"ok": True, "added": added, "total": len(by_email)})
 
 
+def _login_creds(email: str) -> dict:
+    created = find_created_account(email) or {}
+    proxy = (created.get("proxy") or "").strip() or get_proxy_for_email(email)
+    return {
+        "proxy": proxy or None,
+        "totp_secret": get_totp_secret_for_email(email) or None,
+        "mailtm_password": (created.get("mailtm_password") or "").strip() or None,
+    }
+
+
 @app.get("/api/otp/<path:email>")
 def api_otp(email: str):
     email = email.strip()
+    created = find_created_account(email) or {}
+    mailbox_password = (created.get("mailtm_password") or "").strip()
+    if mailbox_password:
+        from mailtm_client import MailTmError, latest_code
+
+        try:
+            code = latest_code(email, mailbox_password)
+        except MailTmError as exc:
+            return jsonify({"code": None, "error": str(exc), "message": None})
+        return jsonify({
+            "code": code,
+            "error": None,
+            "message": {"subject": "mail.tm", "sender": "mail.tm", "date": ""},
+        })
     result = get_latest_muse_code(email)
     payload = {
         "code": result.code,
@@ -305,14 +355,33 @@ def _run_login_job(
         )
 
     _set_job(job_id, {"status": "running", "step": "queued", "detail": "Đang chạy…"})
-    result = login_muse(
-        email,
-        headless=headless,
-        close_after=close_after,
-        save_cookies=save_cookies,
-        proxy=get_proxy_for_email(email) or None,
-        on_progress=on_progress,
-    )
+    try:
+        creds = _login_creds(email)
+        result = login_muse(
+            email,
+            headless=headless,
+            close_after=close_after,
+            save_cookies=save_cookies,
+            proxy=creds["proxy"],
+            totp_secret=creds["totp_secret"],
+            mailtm_password=creds["mailtm_password"],
+            on_progress=on_progress,
+        )
+    except Exception as exc:
+        _set_job(job_id, {"status": "error", "step": "error", "error": str(exc)})
+        return
+    if result.step == "needs_user":
+        _set_job(
+            job_id,
+            {
+                "status": "needs_user",
+                "step": "needs_user",
+                "detail": result.detail,
+                "final_url": result.final_url,
+                "error": None,
+            },
+        )
+        return
     if result.step == "done":
         _set_job(
             job_id,
@@ -340,12 +409,15 @@ def _cookie_one(email: str) -> dict:
     if stop_requested():
         return {"email": email, "status": "stopped", "error": "Đã dừng"}
     try:
+        creds = _login_creds(email)
         result = login_muse(
             email,
             headless=False,
             close_after=True,
             save_cookies=True,
-            proxy=get_proxy_for_email(email) or None,
+            proxy=creds["proxy"],
+            totp_secret=creds["totp_secret"],
+            mailtm_password=creds["mailtm_password"],
             on_progress=None,
         )
     except Exception as exc:
@@ -547,6 +619,453 @@ def api_cookies_copy_text():
     return jsonify({"ok": True, "text": text, "lines": len(text.splitlines())})
 
 
+class _InviteChain:
+    """TK 1 không nhập mã. TK n nhập mã của TK n-1. Mã được phát ngay khi lấy được."""
+
+    def __init__(self, count: int, seed: str = "") -> None:
+        self.seed = (seed or "").strip().upper()
+        self.slots: list[str | None] = [None] * count
+        self.cv = threading.Condition()
+
+    def publish(self, index: int, code: str | None) -> None:
+        with self.cv:
+            if 0 <= index < len(self.slots) and self.slots[index] is None:
+                self.slots[index] = (code or "").strip().upper()
+            self.cv.notify_all()
+
+    def wait_prior(self, index: int) -> str | None:
+        if index <= 0:
+            return self.seed or None
+        with self.cv:
+            while True:
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                pending = False
+                for earlier in range(index - 1, -1, -1):
+                    slot = self.slots[earlier]
+                    if slot is None:
+                        pending = True
+                        break
+                    if slot:
+                        return slot
+                if not pending:
+                    return self.seed or None
+                self.cv.wait(timeout=2)
+
+    def tail(self) -> str:
+        tail = self.seed
+        for slot in self.slots:
+            if slot is None:
+                break
+            if slot:
+                tail = slot
+        return tail
+
+
+def _signup_workers(count: int, proxy_count: int) -> int:
+    if count <= 1:
+        return 1
+    if proxy_count:
+        return min(count, proxy_count, PROXY_PARALLEL)
+    return min(count, BATCH_PARALLEL)
+
+
+def _signup_one(
+    job_id: str,
+    *,
+    count: int,
+    mode: str,
+    state: dict,
+    state_lock: threading.Lock,
+    proxy: str = "",
+    index: int = 0,
+    chain: _InviteChain | None = None,
+) -> None:
+    box = {"email": "", "published": False}
+
+    def on_invite(code: str | None) -> None:
+        box["published"] = True
+        if chain is not None:
+            chain.publish(index, code)
+        if code and box["email"]:
+            set_created_invite_code(box["email"], code)
+
+    try:
+        _signup_one_run(
+            job_id,
+            count=count,
+            mode=mode,
+            state=state,
+            state_lock=state_lock,
+            proxy=proxy,
+            index=index,
+            chain=chain,
+            box=box,
+            on_invite=on_invite,
+        )
+    finally:
+        if chain is not None and not box["published"]:
+            chain.publish(index, None)
+
+
+def _signup_one_run(
+    job_id: str,
+    *,
+    count: int,
+    mode: str,
+    state: dict,
+    state_lock: threading.Lock,
+    proxy: str,
+    index: int,
+    chain: _InviteChain | None,
+    box: dict,
+    on_invite,
+) -> None:
+    from mailtm_client import MailTmError, create_han_mailbox, create_mailbox
+
+    email = ""
+
+    def publish(detail: str | None = None) -> None:
+        with state_lock:
+            running = list(state["running"])
+            fails = list(state["failures"])
+            text = detail or (
+                f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+                + (f" · đang chạy {', '.join(running)}" if running else "")
+            )
+            note = state.get("invite_note") or ""
+            if note and note not in text:
+                text = note + "\n" + text
+            if fails:
+                text += "\n" + "\n".join(fails)
+        _set_job(
+            job_id,
+            {
+                "status": "running",
+                "step": "batch",
+                "detail": text,
+                "email": email,
+                "done_count": state["finished"],
+                "ok_count": state["ok"],
+                "fail_count": state["fail"],
+                "failures": fails,
+                "total": count,
+            },
+        )
+
+    def on_progress(p: LoginProgress) -> None:
+        if count == 1:
+            _set_job(
+                job_id,
+                {
+                    "status": "running" if p.step not in ("done", "error") else "running",
+                    "step": p.step,
+                    "detail": p.detail,
+                    "code": p.code,
+                    "error": p.error,
+                    "email": email,
+                    "final_url": p.final_url,
+                },
+            )
+        else:
+            if p.step == "invite" and p.detail:
+                with state_lock:
+                    state["invite_note"] = p.detail
+            publish()
+
+    def note_fail(reason: str, *, closed: bool) -> None:
+        text = (reason or "Không tạo được").strip()
+        if closed:
+            text += ". Đã đóng Chrome"
+        line = f"{email}: {text}" if email else text
+        with state_lock:
+            state["running"] = [item for item in state["running"] if item != email]
+            state["fail"] += 1
+            state["finished"] += 1
+            state["failures"].append(line)
+            state["last_error"] = line
+        if count == 1:
+            _set_job(
+                job_id,
+                {
+                    "status": "error",
+                    "step": "error",
+                    "error": line,
+                    "detail": line,
+                    "email": email,
+                    "failures": [line],
+                },
+            )
+        else:
+            publish()
+
+    def prepare_mail() -> tuple[str, str, str | None]:
+        nonlocal email
+        if mode == "password":
+            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "fldubai.com")
+        else:
+            email, password, token = create_mailbox(ACCOUNT_PASSWORD)
+        box["email"] = email
+        add_created_account(
+            email,
+            mailtm_password=password,
+            kind="password" if mode == "password" else "plain",
+            proxy=proxy,
+        )
+        with state_lock:
+            state["running"].append(email)
+        publish(f"Đã lưu {email}. Mail đăng nhập lại được." if count == 1 else None)
+        return email, token, password if mode == "password" else None
+
+    try:
+        result = create_muse_account(
+            "",
+            "",
+            proxy=proxy or None,
+            keep_open=count == 1,
+            on_progress=on_progress,
+            take_prior=(lambda: chain.wait_prior(index)) if chain is not None else None,
+            on_invite=on_invite,
+            prepare_mail=prepare_mail,
+        )
+        ok = result.step == "done"
+        error = result.error or ""
+    except Exception as exc:
+        ok = False
+        error = str(exc)
+    if not ok:
+        note_fail(error or "Không tạo được", closed=True)
+        return
+    with state_lock:
+        state["running"] = [item for item in state["running"] if item != email]
+        state["finished"] += 1
+        state["ok"] += 1
+    if count == 1:
+        _set_job(
+            job_id,
+            {
+                "status": "done" if ok else "error",
+                "step": "done" if ok else "error",
+                "detail": (result.detail or f"Đã tạo {email}.") if ok else error,
+                "error": "" if ok else error,
+                "email": email,
+            },
+        )
+    else:
+        publish()
+
+
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None) -> None:
+    clear_stop()
+    proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
+    state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
+    state_lock = threading.Lock()
+    workers = _signup_workers(count, len(proxies))
+    via = f" · mỗi tài khoản 1 proxy" if proxies else ""
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": f"Tạo {count} tài khoản" + via + (f" · {workers} luồng" if workers > 1 else ""),
+            "total": count,
+            "done_count": 0,
+            "ok_count": 0,
+            "fail_count": 0,
+        },
+    )
+    chain = _InviteChain(count, latest_invite_code())
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(
+            pool.map(
+                lambda index: _signup_one(
+                    job_id,
+                    count=count,
+                    mode=mode,
+                    state=state,
+                    state_lock=state_lock,
+                    proxy=proxies[index] if index < len(proxies) else "",
+                    index=index,
+                    chain=chain,
+                ),
+                range(count),
+            )
+        )
+    try:
+        set_invite_chain_code(chain.tail())
+    except Exception:
+        pass
+    stopped = stop_requested()
+    status = "error" if state["ok"] == 0 else "done"
+    summary = (
+        f"Đã dừng · {state['ok']}/{count} tài khoản được tạo."
+        if stopped
+        else f"Xong {state['ok']}/{count} tài khoản · {state['fail']} lỗi."
+    )
+    if state["failures"]:
+        summary += "\n" + "\n".join(state["failures"])
+    _set_job(
+        job_id,
+        {
+            "status": status,
+            "step": "done",
+            "detail": summary,
+            "total": count,
+            "done_count": state["finished"],
+            "ok_count": state["ok"],
+            "fail_count": state["fail"],
+            "failures": list(state["failures"]),
+        },
+    )
+
+
+def _run_signup_job(job_id: str, mode: str = "random") -> None:
+    from mailtm_client import MailTmError, create_han_mailbox, create_mailbox
+
+    def on_progress(p: LoginProgress) -> None:
+        _set_job(
+            job_id,
+            {
+                "status": "running" if p.step not in ("done", "error") else p.step,
+                "step": p.step,
+                "detail": p.detail,
+                "code": p.code,
+                "error": p.error,
+                "final_url": p.final_url,
+            },
+        )
+
+    with_password = mode == "password"
+    holder = {"email": ""}
+
+    def prepare_mail() -> tuple[str, str, str | None]:
+        if with_password:
+            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "fldubai.com")
+        else:
+            email, password, token = create_mailbox(ACCOUNT_PASSWORD)
+        holder["email"] = email
+        add_created_account(
+            email,
+            mailtm_password=password,
+            kind="password" if with_password else "plain",
+        )
+        _set_job(
+            job_id,
+            {
+                "status": "running",
+                "step": "mail_saved",
+                "email": email,
+                "detail": f"Đã lưu {email}. Mail đăng nhập lại được. Bắt đầu tạo tài khoản.",
+            },
+        )
+        return email, token, password if with_password else None
+
+    try:
+        result = create_muse_account(
+            "",
+            "",
+            on_progress=on_progress,
+            prepare_mail=prepare_mail,
+        )
+    except Exception as exc:
+        _set_job(job_id, {"status": "error", "step": "error", "error": str(exc), "email": holder["email"]})
+        return
+    _set_job(
+        job_id,
+        {
+            "status": "done" if result.step == "done" else "error",
+            "step": result.step,
+            "detail": result.detail,
+            "error": result.error,
+            "email": holder["email"],
+            "code": result.code,
+            "final_url": result.final_url,
+        },
+    )
+
+
+@app.get("/api/cards")
+def api_cards_list():
+    return jsonify(list_card_warehouses())
+
+
+@app.post("/api/cards")
+def api_cards_add():
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        card = add_card_warehouse(body.get("number") or "", body.get("expiry") or "", body.get("cvv") or "")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "card": card, **list_card_warehouses()})
+
+
+@app.post("/api/cards/delete")
+def api_cards_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    if not delete_card_warehouse((body.get("id") or "").strip()):
+        return jsonify({"ok": False, "error": "Không thấy kho thẻ"}), 404
+    return jsonify({"ok": True, **list_card_warehouses()})
+
+
+@app.get("/api/created")
+def api_created_accounts():
+    warehouse_id = (request.args.get("warehouse_id") or "").strip() or None
+    kind = "password" if request.args.get("kind") == "password" else "plain"
+    return jsonify(list_created_accounts(warehouse_id, kind))
+
+
+@app.post("/api/created/warehouses")
+def api_created_warehouses_create():
+    body = request.get_json(force=True, silent=True) or {}
+    kind = "password" if body.get("kind") == "password" else "plain"
+    wh = create_created_warehouse(kind, body.get("name"))
+    return jsonify({"ok": True, "warehouse": {"id": wh.get("id"), "name": wh.get("name"), "kind": kind}, **list_created_accounts(wh.get("id"), kind)})
+
+
+@app.post("/api/created/active")
+def api_created_active():
+    body = request.get_json(force=True, silent=True) or {}
+    warehouse_id = (body.get("id") or "").strip()
+    kind = "password" if body.get("kind") == "password" else "plain"
+    if not set_active_created_warehouse(warehouse_id):
+        return jsonify({"ok": False, "error": "Không thấy kho tạo"}), 404
+    return jsonify({"ok": True, **list_created_accounts(warehouse_id, kind)})
+
+
+@app.post("/api/signup")
+def api_signup():
+    body = request.get_json(force=True, silent=True) or {}
+    mode = "plain" if body.get("mode") == "plain" else "password"
+    raw_count = body.get("count")
+    try:
+        count = int(raw_count)
+    except (TypeError, ValueError):
+        count = 1 if raw_count in (None, "") else 0
+    proxies = [line.strip() for line in (body.get("proxies") or "").splitlines() if line.strip()]
+    if count < 1 or count > SIGNUP_MAX:
+        return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
+    if proxies and len(proxies) < count:
+        return jsonify({
+            "ok": False,
+            "error": f"Mỗi tài khoản cần 1 dòng proxy. Cần {count} dòng, đang có {len(proxies)}.",
+        }), 400
+    proxies = proxies[:count]
+    job_id = uuid.uuid4().hex[:12]
+    workers = _signup_workers(count, len(proxies))
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": f"Tạo {count} tài khoản" + (f" · {workers} luồng" if workers > 1 else ""),
+            "total": count,
+        },
+    )
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers})
+
+
 @app.post("/api/login")
 def api_login_start():
     body = request.get_json(force=True, silent=True) or {}
@@ -727,6 +1246,7 @@ def _watch_files() -> list[str]:
         "cookie_store.py",
         "muse_automation.py",
         "lay2fa_client.py",
+        "mailtm_client.py",
     ):
         p = ROOT / name
         if p.is_file():

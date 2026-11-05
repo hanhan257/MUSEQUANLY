@@ -87,6 +87,12 @@
     .btn-error { background: #3a2228; color: #ffb4b4; border: 1px solid #6a3038; }
     .kho-count { font-size: 0.72rem; color: var(--muted); font-weight: 500; }
     .side-actions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0; }
+    .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
+    .created-kho { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .signup-proxy { margin-bottom: 0.75rem; }
+    .signup-proxy label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
+    .signup-proxy textarea { width: 100%; min-height: 4.6rem; resize: vertical; }
+    .created-kho .kho-btn { width: auto; }
     .build { font-size: 0.68rem; color: var(--muted); padding: 0 0.35rem; }
     .main { padding: 1.1rem 1.25rem 2rem; min-width: 0; }
     .top {
@@ -100,6 +106,8 @@
     .top h2 { margin: 0; font-size: 1.25rem; }
     .meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
     .toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+    #createdCookieTools { width: 100%; }
+    [hidden] { display: none !important; }
     button, .btn {
       font-family: inherit;
       font-size: 0.82rem;
@@ -116,7 +124,7 @@
     .btn-ghost:hover:not(:disabled) { background: #273140; }
     .btn-all { background: linear-gradient(135deg, #3dd68c, #1f9a62); color: #08140e; }
     .btn-sm { padding: 0.32rem 0.5rem; font-size: 0.74rem; }
-    input[type="search"], input[type="number"], select, textarea {
+    input[type="search"], input[type="number"], input[type="text"], input:not([type]), select, textarea {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -147,6 +155,7 @@
       border-bottom: 1px solid var(--border);
     }
     .login-status.show { display: block; }
+    #signupStatus { white-space: pre-wrap; max-height: 16rem; overflow: auto; }
     .login-status.running { border-left: 3px solid var(--accent); }
     .login-status.done { border-left: 3px solid var(--success); }
     .login-status.error { border-left: 3px solid var(--danger); }
@@ -242,11 +251,15 @@
       <div class="side-actions">
         <button type="button" class="btn-primary" id="btnOpenImport">Dán tài khoản</button>
         <button type="button" class="btn-ghost" id="btnNewWarehouse">+ Kho trống</button>
-        <div class="build">build {{ app_build }}</div>
+        <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
+        <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu</button>
+        <button type="button" class="btn-ghost" id="btnCards">Kho thẻ</button>
+        <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
     </aside>
 
     <main class="main">
+      <div id="khoView">
       <div class="top">
         <div>
           <h2 id="khoTitle">Kho</h2>
@@ -281,16 +294,70 @@
         <div class="progress-bar" id="batchProgress"><span id="batchProgressFill"></span></div>
         <div id="tableWrap"></div>
       </div>
+      </div>
+
+      <div id="signupView" hidden>
+        <div class="top">
+          <div>
+            <h2 id="signupTitle">Tạo TK không mật khẩu</h2>
+            <div class="meta" id="signupMeta">Mail ngẫu nhiên @fldubai.com · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu</div>
+          </div>
+          <div class="toolbar" id="signupTools">
+            <button type="button" class="btn-primary" data-signup-count="1">1 TK</button>
+            <button type="button" class="btn-ghost" data-signup-count="5">5 TK</button>
+            <button type="button" class="btn-ghost" data-signup-count="10">10 TK</button>
+            <button type="button" class="btn-ghost" data-signup-count="50">50 TK · 5 luồng</button>
+            <label class="check-inline">Số TK
+              <input type="number" id="signupCustomCount" value="3" min="1" max="200" style="width:4.2rem;" />
+            </label>
+            <button type="button" class="btn-primary" id="btnCustomSignup">Tạo</button>
+            <button type="button" class="btn-ghost" id="btnNewCreatedKho">Tạo kho mới</button>
+            <button type="button" class="btn-error" id="btnStopSignup">Dừng</button>
+          </div>
+          <div class="toolbar" id="createdCookieTools">
+            <button type="button" class="btn-all" id="btnCreatedCookies">Lấy cookie kho này · 5 luồng</button>
+            <button type="button" class="btn-primary" id="btnCreatedRelogin">Đăng nhập lấy lại cookie</button>
+            <button type="button" class="btn-primary" id="btnCreatedCopyCookies">Trích xuất cookie</button>
+            <button type="button" class="btn-ghost" id="btnCreatedExportCookies">Xuất TXT</button>
+            <label class="check-inline"><input type="checkbox" id="createdSkipExisting" checked /> Bỏ qua TK đã có cookie</label>
+          </div>
+        </div>
+        <div class="created-kho" id="createdKhoList"></div>
+        <div class="signup-proxy">
+          <label for="signupProxies">Mỗi dòng một tài khoản. Chrome mới nhận proxy trước, chỉ tạo khi IP ra là Mỹ, rồi mới tạo mail và kiểm tra đăng nhập lại được. 100 dòng thì tạo 100 tài khoản, chỉ mở 5 Chrome cùng lúc. Dạng ip:port hoặc ip:port:user:pass. Để trống thì dùng VPN, IP đó cũng phải là Mỹ. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy. Tài khoản đầu chưa có mã thì bỏ qua. Tài khoản sau vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước.</label>
+          <textarea id="signupProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
+        </div>
+        <div class="panel">
+          <div id="signupStatus" class="login-status"></div>
+          <div id="signupTable"></div>
+        </div>
+      </div>
+
+      <div id="cardView" hidden>
+        <div class="top">
+          <div>
+            <h2>Kho thẻ</h2>
+            <div class="meta">Mỗi kho một thẻ. Bạn nhập số thẻ, MM/YY và CVV. ZIP tự điền 06779. Muse báo thẻ lỗi thì sang kho tiếp theo.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-bottom:0.75rem;">
+          <input id="cardNumber" placeholder="Số thẻ" inputmode="numeric" autocomplete="off" />
+          <input id="cardExpiry" placeholder="MM/YY" autocomplete="off" style="width:6.2rem;" />
+          <input id="cardCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="width:5.2rem;" />
+          <button type="button" class="btn-primary" id="btnAddCard">Thêm thẻ</button>
+        </div>
+        <div class="panel"><div id="cardTable"></div></div>
+      </div>
     </main>
   </div>
 
   <div class="drawer-back" id="drawerBack"></div>
   <aside class="drawer" id="drawer">
     <h3>Nhập tài khoản</h3>
-    <p class="hint">Mỗi dòng <code>email|lay2fa.xyz/email</code>. Dán 100 dòng sẽ thành Kho 1 (50) + Kho 2 (50).</p>
+    <p class="hint">Mỗi dòng <code>email|lay2fa.xyz/email|MÃ 2FA</code>. Mã 2FA là cụm như <code>OP73 7X6Q POFO JANG</code> — tool dán lên 2fa.live để lấy code khi gặp Mã khôi phục. Dán 100 dòng sẽ thành Kho 1 (50) + Kho 2 (50).</p>
     <section>
       <div class="side-label">Dán nhiều kho</div>
-      <textarea id="bulkImportEditor" placeholder="email|lay2fa.xyz/email"></textarea>
+      <textarea id="bulkImportEditor" placeholder="email|lay2fa.xyz/email|OP73 7X6Q POFO JANG"></textarea>
       <p class="hint">Proxy phía dưới: dòng 1 gắn tài khoản 1, dòng 50 gắn tài khoản 50. Dạng <code>ip:port</code> hoặc <code>ip:port:user:pass</code>.</p>
       <textarea id="bulkProxyEditor" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
       <div class="toolbar" style="margin-top:0.55rem;">
@@ -313,9 +380,13 @@
 
   <script>
     let accounts = [];
+    let createdAccounts = [];
+    const createdExcluded = new Set();
+    let createdBoard = { warehouses: [], accounts: [] };
     let activeWarehouseId = null;
     let activeWarehouseKind = 'normal';
     let warehouseSummary = null;
+    let viewMode = 'kho';
     const excludedExport = new Set();
 
     function toast(msg) {
@@ -352,6 +423,9 @@
       root.querySelectorAll('.kho-btn').forEach(btn => {
         btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
       });
+      if (viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards') {
+        root.querySelectorAll('.kho-btn').forEach(btn => btn.classList.remove('active'));
+      }
       document.getElementById('khoTitle').textContent = active ? active.name : 'Kho';
       document.getElementById('khoMeta').textContent = !active
         ? ''
@@ -360,16 +434,33 @@
           : `${active.count}/${active.max} tài khoản · cookie lấy từ muse.ai`;
     }
 
+    function applyView() {
+      const signup = viewMode === 'signup' || viewMode === 'password';
+      const cards = viewMode === 'cards';
+      document.getElementById('khoView').hidden = signup || cards;
+      document.getElementById('signupView').hidden = !signup;
+      document.getElementById('cardView').hidden = !cards;
+      document.getElementById('signupTitle').textContent = viewMode === 'password' ? 'Tạo TK có mật khẩu' : 'Tạo TK không mật khẩu';
+      document.getElementById('btnCreateAccount').classList.toggle('active', viewMode === 'signup');
+      document.getElementById('btnCreatePassword').classList.toggle('active', viewMode === 'password');
+      document.getElementById('btnCards').classList.toggle('active', cards);
+      if (signup || cards) document.querySelectorAll('#khoList .kho-btn').forEach(btn => btn.classList.remove('active'));
+    }
+
     async function setActiveWarehouse(id) {
-      if (!id || id === activeWarehouseId) return;
-      await fetch('/api/warehouses/active', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      activeWarehouseId = id;
+      const leavingSignup = viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards';
+      viewMode = 'kho';
+      if (!id || (id === activeWarehouseId && !leavingSignup)) return;
+      if (id !== activeWarehouseId) {
+        await fetch('/api/warehouses/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        activeWarehouseId = id;
+        toast('Đã chuyển kho');
+      }
       await refreshAll();
-      toast('Đã chuyển kho');
     }
 
     function statusBadge(status) {
@@ -430,6 +521,7 @@
                 <td>${i + 1}</td>
                 <td class="email">${escapeHtml(a.email)}
                   <span class="subline">${escapeHtml(a.lay2fa_url || '')}</span>
+                  ${a.totp_secret ? '<span class="subline">có mã 2FA</span>' : '<span class="subline">chưa có mã 2FA</span>'}
                   ${a.proxy ? `<span class="subline">proxy ${escapeHtml(a.proxy)}</span>` : ''}
                   <div class="note-clip"><div class="row-note" title="${escapeHtml(a.login_error || '')}">${escapeHtml(a.login_error || '')}</div></div>
                   <div class="otp-box" id="otp-${i}"></div>
@@ -537,7 +629,11 @@
         };
       });
       document.getElementById('accountsEditor').value = accounts
-        .map(a => `${a.email}|${String(a.lay2fa_url || '').replace(/^https?:\/\//, '')}`)
+        .map(a => {
+          const url = String(a.lay2fa_url || '').replace(/^https?:\/\//, '');
+          const secret = String(a.totp_secret || '').trim();
+          return secret ? `${a.email}|${url}|${secret}` : `${a.email}|${url}`;
+        })
         .join('\n');
       document.getElementById('proxyEditor').value = accounts.map(a => a.proxy || '').join('\n');
       document.getElementById('khoTitle').textContent = data.warehouse?.name || document.getElementById('khoTitle').textContent;
@@ -761,6 +857,11 @@
           btn.disabled = false;
           await refreshAll();
           toast(st.cookies_count ? 'Đã lưu cookie' : 'Đăng nhập xong');
+        } else if (st.status === 'needs_user') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setLoginStatus(st.detail || 'Chrome đang chờ bạn xác minh / up ảnh', 'running');
+          btn.disabled = false;
         } else if (st.status === 'error') {
           clearInterval(loginPollTimer);
           loginPollTimer = null;
@@ -802,8 +903,136 @@
       await refreshAll();
     }
 
+    function setSignupStatus(text, kind) {
+      const box = document.getElementById('signupStatus');
+      box.textContent = text || '';
+      box.className = text ? 'login-status show ' + (kind || 'running') : 'login-status';
+    }
+
+    function renderCreated() {
+      const khoRoot = document.getElementById('createdKhoList');
+      const active = (createdBoard.warehouses || []).find(w => w.active);
+      khoRoot.innerHTML = (createdBoard.warehouses || []).map(w => `
+        <button type="button" class="kho-btn ${w.active ? 'active' : ''}" data-created-kho="${w.id}">
+          <span>${escapeHtml(w.name)}</span>
+          <span class="kho-count">${w.count}/${w.max}</span>
+        </button>`).join('');
+      khoRoot.querySelectorAll('[data-created-kho]').forEach(btn => {
+        btn.addEventListener('click', () => setCreatedWarehouse(btn.dataset.createdKho));
+      });
+      if (active) {
+        document.getElementById('signupMeta').textContent = viewMode === 'password'
+          ? `${active.name} · ${active.count}/${active.max} · han + 9 số @fldubai.com · mật khẩu mail.tm Congphu21@ · đăng nhập mail.tm lần sau vẫn lấy được mã`
+          : `${active.name} · ${active.count}/${active.max} · mail ngẫu nhiên @fldubai.com · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu`;
+      }
+      const root = document.getElementById('signupTable');
+      if (!createdAccounts.length) {
+        root.innerHTML = '<div class="empty">Kho này chưa có tài khoản. Bấm 1, 5, 10, 50 hoặc nhập số rồi bấm Tạo.</div>';
+        return;
+      }
+      const cookieRows = createdAccounts.filter(a => a.has_cookie && a.cookie_header);
+      const withCookie = cookieRows.length;
+      root.innerHTML = `
+        <table>
+          <thead><tr>
+            <th class="check"><input type="checkbox" id="createdCheckAll" title="Tích tất cả cookie trong kho này" /></th>
+            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu mail.tm</th><th>Mã mời</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${createdAccounts.map((a, i) => {
+              const rawCookie = String(a.cookie_header || '').replace(/[`$]/g, '');
+              const snip = rawCookie ? escapeHtml(rawCookie.slice(0, 48)) + '…' : '—';
+              const canExport = !!(a.has_cookie && a.cookie_header);
+              const checked = canExport && !createdExcluded.has(a.email.toLowerCase()) ? 'checked' : '';
+              return `<tr>
+              <td class="check"><input type="checkbox" class="created-export" data-email="${encodeURIComponent(a.email)}" ${canExport ? '' : 'disabled'} ${checked} title="${canExport ? 'Bỏ tích để không trích xuất cookie này' : 'Chưa có cookie'}" /></td>
+              <td>${i + 1}</td>
+              <td class="email">${escapeHtml(a.email)}</td>
+              <td class="hint">${escapeHtml(a.password || '')}</td>
+              <td>${escapeHtml(a.invite_code || '')}</td>
+              <td class="cookie-cell">
+                <span class="badge ${a.has_cookie ? 'ok' : 'no'}">${a.has_cookie ? 'Có cookie' : 'Chưa có'}</span>
+                <div class="cookie-snip" title="${escapeHtml(rawCookie)}">${snip}</div>
+                ${a.cookie_saved_at ? `<div class="hint">${escapeHtml(a.cookie_saved_at)}</div>` : ''}
+              </td>
+              <td class="hint">${escapeHtml(a.proxy || '')}</td>
+              <td class="hint">${escapeHtml(a.created_at || '')}</td>
+              <td>
+                <div class="actions">
+                  <button type="button" class="btn-primary btn-sm" data-created-cookie="${encodeURIComponent(a.email)}">Lấy cookie</button>
+                  <button type="button" class="btn-ghost btn-sm" data-created-login="${encodeURIComponent(a.email)}">Đăng nhập</button>
+                  <button type="button" class="btn-ghost btn-sm" data-created-copy="${encodeURIComponent(a.email)}" ${a.has_cookie ? '' : 'disabled'}>Copy</button>
+                  <button type="button" class="btn-ghost btn-sm" data-created-otp="${encodeURIComponent(a.email)}">Mã mail</button>
+                </div>
+              </td>
+            </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="hint" style="padding:0.55rem 0.75rem;">${createdAccounts.length} tài khoản · ${withCookie} đã có cookie · tích dòng cần lấy rồi bấm Trích xuất cookie. Dòng dạng email|cookie</div>`;
+      const checkAll = document.getElementById('createdCheckAll');
+      if (checkAll) {
+        const selected = cookieRows.filter(a => !createdExcluded.has(a.email.toLowerCase()));
+        checkAll.disabled = cookieRows.length === 0;
+        checkAll.checked = cookieRows.length > 0 && selected.length === cookieRows.length;
+        checkAll.indeterminate = selected.length > 0 && selected.length < cookieRows.length;
+        checkAll.addEventListener('change', () => {
+          cookieRows.forEach(a => {
+            const key = a.email.toLowerCase();
+            if (checkAll.checked) createdExcluded.delete(key);
+            else createdExcluded.add(key);
+          });
+          root.querySelectorAll('.created-export').forEach(box => {
+            if (!box.disabled) box.checked = checkAll.checked;
+          });
+        });
+      }
+      root.querySelectorAll('.created-export').forEach(box => {
+        box.addEventListener('change', () => {
+          const key = decodeURIComponent(box.dataset.email).toLowerCase();
+          if (box.checked) createdExcluded.delete(key);
+          else createdExcluded.add(key);
+          renderCreated();
+        });
+      });
+      root.querySelectorAll('[data-created-cookie]').forEach(btn => {
+        btn.addEventListener('click', () => startCreatedLogin(btn.dataset.createdCookie, true));
+      });
+      root.querySelectorAll('[data-created-login]').forEach(btn => {
+        btn.addEventListener('click', () => startCreatedLogin(btn.dataset.createdLogin, false));
+      });
+      root.querySelectorAll('[data-created-copy]').forEach(btn => {
+        btn.addEventListener('click', () => copyCookie(btn.dataset.createdCopy));
+      });
+      root.querySelectorAll('[data-created-otp]').forEach(btn => {
+        btn.addEventListener('click', () => fetchCreatedOtp(btn.dataset.createdOtp));
+      });
+    }
+
+    async function setCreatedWarehouse(id) {
+      await fetch('/api/created/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, kind: viewMode === 'password' ? 'password' : 'plain' }),
+      });
+      await loadCreated();
+    }
+
+    async function loadCreated() {
+      const kind = viewMode === 'password' ? 'password' : 'plain';
+      const res = await fetch('/api/created?kind=' + kind + '&t=' + Date.now(), { cache: 'no-store' });
+      createdBoard = await res.json();
+      createdAccounts = createdBoard.accounts || [];
+      renderCreated();
+    }
+
     async function refreshAll() {
       await loadWarehouses();
+      applyView();
+      if (viewMode === 'signup') {
+        await loadCreated();
+        return;
+      }
       await loadEditor();
     }
 
@@ -848,6 +1077,299 @@
       await refreshAll();
       toast('Đã tạo kho mới');
     });
+    document.getElementById('btnCreateAccount').addEventListener('click', async () => {
+      viewMode = 'signup';
+      applyView();
+      await loadCreated();
+    });
+    document.getElementById('btnCreatePassword').addEventListener('click', async () => {
+      viewMode = 'password';
+      applyView();
+      await loadCreated();
+    });
+    function renderCards(data) {
+      const rows = data.warehouses || [];
+      const root = document.getElementById('cardTable');
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">Chưa có thẻ. Nhập số thẻ, MM/YY, CVV rồi bấm Thêm thẻ.</div>';
+        return;
+      }
+      root.innerHTML = `
+        <table>
+          <thead><tr><th>Kho</th><th>Số thẻ</th><th>Ngày</th><th>CVV</th><th>Trạng thái</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map(card => `<tr>
+              <td>${escapeHtml(card.name)}</td>
+              <td class="email">${escapeHtml(card.number)}</td>
+              <td>${escapeHtml(card.expiry)}</td>
+              <td>${escapeHtml(card.cvv)}</td>
+              <td class="hint">${card.status === 'error' ? 'Thẻ lỗi' : 'Sẵn sàng'}</td>
+              <td><button type="button" class="btn-ghost btn-sm" data-delete-card="${card.id}">Xóa</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+      root.querySelectorAll('[data-delete-card]').forEach(btn => {
+        btn.addEventListener('click', () => deleteCard(btn.dataset.deleteCard));
+      });
+    }
+    async function loadCards() {
+      const res = await fetch('/api/cards?t=' + Date.now(), { cache: 'no-store' });
+      renderCards(await res.json());
+    }
+    async function deleteCard(id) {
+      const res = await fetch('/api/cards/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      renderCards(data);
+      toast('Đã xóa thẻ');
+    }
+    document.getElementById('btnCards').addEventListener('click', async () => {
+      viewMode = 'cards';
+      applyView();
+      await loadCards();
+    });
+    document.getElementById('btnAddCard').addEventListener('click', async () => {
+      const res = await fetch('/api/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: document.getElementById('cardNumber').value,
+          expiry: document.getElementById('cardExpiry').value,
+          cvv: document.getElementById('cardCvv').value,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không thêm được thẻ'); return; }
+      document.getElementById('cardNumber').value = '';
+      document.getElementById('cardExpiry').value = '';
+      document.getElementById('cardCvv').value = '';
+      renderCards(data);
+      toast('Đã thêm ' + (data.card && data.card.name ? data.card.name : 'thẻ'));
+    });
+    function signupProxyLines() {
+      return document.getElementById('signupProxies').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    }
+    function signupMode() {
+      return viewMode === 'password' ? 'password' : 'plain';
+    }
+    function setSignupButtons(disabled) {
+      document.querySelectorAll('[data-signup-count], #btnCustomSignup').forEach(btn => { btn.disabled = disabled; });
+      document.getElementById('signupCustomCount').disabled = disabled;
+    }
+    async function startSignup(count, mode) {
+      const proxies = signupProxyLines();
+      if (proxies.length > 200) {
+        setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
+        return;
+      }
+      if (proxies.length) count = proxies.length;
+      const used = proxies.slice(0, count);
+      if (proxies.length && used.length < count) {
+        setSignupStatus(`Mỗi tài khoản cần 1 dòng proxy. Cần ${count} dòng, đang có ${proxies.length}.`, 'error');
+        return;
+      }
+      setSignupButtons(true);
+      if (loginPollTimer) clearInterval(loginPollTimer);
+      const workers = count > 1 ? Math.min(count, 5) : 1;
+      const proxyNote = used.length ? ` · ${count} tài khoản từ ${count} proxy, 5 Chrome cùng lúc` : '';
+      const lead = mode === 'plain' ? 'Đang tạo mail @fldubai.com, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@';
+      setSignupStatus(
+        count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
+        'running'
+      );
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count, mode, proxies: used.join('\n') }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không tạo được', 'error');
+        setSignupButtons(false);
+        return;
+      }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') {
+          setSignupStatus(line || 'Đang tạo tài khoản…', 'running');
+          await loadCreated();
+        } else if (st.status === 'done') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(st.detail || 'Đã tạo tài khoản', 'done');
+          setSignupButtons(false);
+          await loadCreated();
+          toast(st.detail || 'Đã tạo tài khoản');
+        } else if (st.status === 'error' || st.status === 'unknown') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(st.error || st.detail || 'Lỗi tạo tài khoản', 'error');
+          setSignupButtons(false);
+          await loadCreated();
+        }
+      }, 1500);
+    }
+    async function createCreatedWarehouse() {
+      const kind = viewMode === 'password' ? 'password' : 'plain';
+      const res = await fetch('/api/created/warehouses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không tạo được kho'); return; }
+      createdBoard = data;
+      createdAccounts = data.accounts || [];
+      renderCreated();
+      const active = (data.warehouses || []).find(w => w.active);
+      toast(active ? 'Đã tạo ' + active.name : 'Đã tạo kho mới');
+    }
+    async function fetchCreatedOtp(encodedEmail) {
+      const email = decodeURIComponent(encodedEmail);
+      setSignupStatus('Đang lấy mã mail.tm của ' + email + '…', 'running');
+      const res = await fetch('/api/otp/' + encodeURIComponent(email), { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.code) {
+        setSignupStatus(data.error || 'Hộp thư chưa có mã', 'error');
+        return;
+      }
+      setSignupStatus(email + ' · mã mail.tm ' + data.code, 'done');
+      toast('Mã ' + data.code);
+    }
+    async function startCreatedLogin(encodedEmail, closeAfter) {
+      if (loginPollTimer) {
+        toast('Đang chạy việc khác, chờ xong rồi đăng nhập');
+        return;
+      }
+      const email = decodeURIComponent(encodedEmail);
+      setSignupStatus((closeAfter ? 'Đang lấy cookie: ' : 'Đang đăng nhập: ') + email, 'running');
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, headless: false, close_after: closeAfter, save_cookies: true }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không đăng nhập được', 'error');
+        return;
+      }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') {
+          setSignupStatus(line || 'Đang đăng nhập…', 'running');
+        } else if (st.status === 'done' || st.status === 'needs_user') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(line || 'Đã lưu cookie', 'done');
+          await loadCreated();
+        } else if (st.status === 'error' || st.status === 'unknown') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(st.error || st.detail || 'Không đăng nhập được', 'error');
+          await loadCreated();
+        }
+      }, 1500);
+    }
+    async function startCreatedCookies(force) {
+      if (loginPollTimer || batchPollTimer) {
+        toast('Đang chạy việc khác');
+        return;
+      }
+      const emails = createdAccounts.map(a => a.email);
+      if (!emails.length) {
+        setSignupStatus('Kho này chưa có tài khoản.', 'error');
+        return;
+      }
+      const skipExisting = force ? false : document.getElementById('createdSkipExisting').checked;
+      setSignupStatus(force ? 'Đăng nhập lấy lại cookie cả kho…' : 'Lấy cookie các tài khoản chưa có…', 'running');
+      const res = await fetch('/api/batch/cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails, skip_existing: skipExisting }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không chạy được', 'error');
+        return;
+      }
+      batchPollTimer = setInterval(async () => {
+        const st = await fetch('/api/batch/' + data.job_id, { cache: 'no-store' }).then(r => r.json());
+        const fresh = st.ok || 0;
+        const kind = st.status === 'error' ? 'error' : (st.status === 'done' || st.status === 'stopped' ? 'done' : 'running');
+        setSignupStatus(st.detail || `Đã lấy ${fresh} cookie · lỗi ${st.fail || 0}`, kind);
+        if (st.status === 'done' || st.status === 'stopped' || st.status === 'error' || st.status === 'unknown') {
+          clearInterval(batchPollTimer);
+          batchPollTimer = null;
+          await loadCreated();
+        }
+      }, 1500);
+    }
+    function createdCookieLines() {
+      return createdAccounts
+        .filter(a => a.has_cookie && a.cookie_header && !createdExcluded.has(a.email.toLowerCase()))
+        .map(a => `${a.email}|${a.cookie_header}`);
+    }
+    async function copyCreatedCookies() {
+      const lines = createdCookieLines();
+      if (!lines.length) { toast('Không có cookie được tích'); return; }
+      await navigator.clipboard.writeText(lines.join('\n'));
+      toast(`Đã trích xuất ${lines.length} cookie`);
+    }
+    function exportCreatedCookies() {
+      const lines = createdCookieLines();
+      if (!lines.length) { toast('Không có cookie được tích'); return; }
+      const active = (createdBoard.warehouses || []).find(w => w.active);
+      const kho = String((active && active.name) || 'Kho').replace(/[\\/:*?"<>|]/g, '');
+      const kind = viewMode === 'password' ? 'co-mat-khau' : 'khong-mat-khau';
+      const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${kho} ${kind} - ${lines.length} cookie.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(`Đã xuất ${lines.length} cookie`);
+    }
+    document.getElementById('btnCreatedCopyCookies').addEventListener('click', copyCreatedCookies);
+    document.getElementById('btnCreatedExportCookies').addEventListener('click', exportCreatedCookies);
+    document.getElementById('btnCreatedCookies').addEventListener('click', () => startCreatedCookies(false));
+    document.getElementById('btnCreatedRelogin').addEventListener('click', () => startCreatedCookies(true));
+    document.getElementById('btnNewCreatedKho').addEventListener('click', createCreatedWarehouse);
+    document.getElementById('btnCustomSignup').addEventListener('click', () => {
+      const proxies = signupProxyLines();
+      if (proxies.length) {
+        if (proxies.length > 200) {
+          setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
+          return;
+        }
+        startSignup(proxies.length, signupMode());
+        return;
+      }
+      const count = Number(document.getElementById('signupCustomCount').value);
+      if (!Number.isInteger(count) || count < 1 || count > 200) {
+        setSignupStatus('Nhập số tài khoản từ 1 đến 200.', 'error');
+        return;
+      }
+      startSignup(count, signupMode());
+    });
+    document.querySelectorAll('[data-signup-count]').forEach(btn => {
+      btn.addEventListener('click', () => startSignup(Number(btn.dataset.signupCount), signupMode()));
+    });
+    async function stopSignup(btn) {
+      btn.disabled = true;
+      setSignupStatus('Đang dừng Chrome…', 'error');
+      const res = await fetch('/api/batch/stop', { method: 'POST' });
+      const data = await res.json();
+      btn.disabled = false;
+      if (!data.ok) { toast('Không dừng được'); return; }
+      toast('Đã gửi lệnh dừng');
+    }
+    document.getElementById('btnStopSignup').addEventListener('click', () => stopSignup(document.getElementById('btnStopSignup')));
     document.getElementById('btnRename').addEventListener('click', async () => {
       const current = document.getElementById('khoTitle').textContent;
       const name = prompt('Tên kho', current);

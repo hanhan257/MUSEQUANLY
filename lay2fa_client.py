@@ -57,16 +57,22 @@ def email_from_lay2fa_url(url: str) -> str | None:
     return None
 
 
-def parse_account_line(line: str) -> tuple[str, str] | None:
+def parse_account_line(line: str) -> tuple[str, str, str] | None:
+    """email|lay2fa|mã 2FA — mã 2FA có thể có dấu cách, ví dụ OP73 7X6Q POFO JANG."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
-    if "|" in line:
-        email_part, url_part = line.split("|", 1)
-        email = email_part.strip()
-        url = normalize_lay2fa_url(url_part.strip(), email)
+    parts = [part.strip() for part in line.split("|")]
+    secret = ""
+    if len(parts) >= 3:
+        email = parts[0]
+        url = normalize_lay2fa_url(parts[1], email)
+        secret = " ".join(" ".join(parts[2:]).split())
+    elif len(parts) == 2:
+        email = parts[0]
+        url = normalize_lay2fa_url(parts[1], email)
     else:
-        email = line.strip()
+        email = parts[0]
         url = normalize_lay2fa_url("", email)
     if "@" not in email:
         inferred = email_from_lay2fa_url(url)
@@ -74,7 +80,20 @@ def parse_account_line(line: str) -> tuple[str, str] | None:
             email = inferred
         else:
             return None
-    return email, url
+    return email, url, secret
+
+
+def fetch_2fa_live_code(secret: str) -> str:
+    """Cùng việc dán mã lên https://2fa.live/ rồi bấm Submit: GET /tok/<secret>."""
+    compact = re.sub(r"\s+", "", (secret or "").strip()).upper()
+    if not compact:
+        raise RuntimeError("Chưa có mã 2FA trên dòng tài khoản.")
+    resp = _session().get(f"https://2fa.live/tok/{quote(compact, safe='')}", timeout=25)
+    resp.raise_for_status()
+    token = str((resp.json() or {}).get("token") or "").strip()
+    if not re.fullmatch(r"\d{6}", token):
+        raise RuntimeError("2fa.live không trả mã 6 số.")
+    return token
 
 
 def _session() -> requests.Session:
