@@ -42,6 +42,7 @@ from warehouse_store import (
     create_warehouse,
     ensure_initialized,
     find_created_account,
+    get_account_password_for_email,
     get_accounts_for_warehouse,
     get_active_warehouse,
     get_proxy_for_email,
@@ -63,7 +64,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v60"
+APP_BUILD = "signup-v61"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -298,6 +299,7 @@ def _login_creds(email: str) -> dict:
         "proxy": proxy or None,
         "totp_secret": get_totp_secret_for_email(email) or None,
         "mailtm_password": (created.get("mailtm_password") or "").strip() or None,
+        "account_password": get_account_password_for_email(email) or None,
     }
 
 
@@ -379,6 +381,7 @@ def _run_login_job(
             proxy=creds["proxy"],
             totp_secret=creds["totp_secret"],
             mailtm_password=creds["mailtm_password"],
+            account_password=creds["account_password"],
             on_progress=on_progress,
         )
     except Exception as exc:
@@ -432,6 +435,7 @@ def _cookie_one(email: str) -> dict:
             proxy=creds["proxy"],
             totp_secret=creds["totp_secret"],
             mailtm_password=creds["mailtm_password"],
+            account_password=creds["account_password"],
             on_progress=None,
         )
     except Exception as exc:

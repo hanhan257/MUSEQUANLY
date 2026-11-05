@@ -1634,6 +1634,40 @@ def _fill_account_password(page: Page, password: str) -> bool:
     return wrote
 
 
+def _click_use_password_instead(page: Page) -> bool:
+    """Bấm link 'Use password instead' trên màn nhập code của Muse."""
+    patterns = [
+        re.compile(r"Use password instead", re.I),
+        re.compile(r"Dùng mật khẩu", re.I),
+        re.compile(r"Use password", re.I),
+        re.compile(r"mật khẩu", re.I),
+    ]
+    for pattern in patterns:
+        for frame in _frames(page):
+            try:
+                link = frame.get_by_role("link", name=pattern)
+                if link.count() > 0 and link.first.is_visible():
+                    link.first.click(force=True, timeout=5000)
+                    return True
+            except Exception:
+                pass
+            try:
+                text = frame.get_by_text(pattern)
+                if text.count() > 0 and text.first.is_visible():
+                    text.first.click(force=True, timeout=5000)
+                    return True
+            except Exception:
+                continue
+            try:
+                button = frame.get_by_role("button", name=pattern)
+                if button.count() > 0 and button.first.is_visible():
+                    button.first.click(force=True, timeout=5000)
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 def _email_screen_visible(page: Page) -> bool:
     try:
         box = page.get_by_placeholder(EMAIL_PLACEHOLDER)
@@ -2537,6 +2571,7 @@ def login_muse(
     proxy: str | None = None,
     totp_secret: str | None = None,
     mailtm_password: str | None = None,
+    account_password: str | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> LoginProgress:
     try:
@@ -2600,6 +2635,28 @@ def login_muse(
             # _submit_signup_email đã gồm cả hai việc: chờ Muse load xong mới
             # nhập, và tự nhập lại nếu trang load lại làm mất email.
             _submit_signup_email(page, email)
+
+            if account_password:
+                for _ in range(20):
+                    if _click_use_password_instead(page):
+                        _emit(on_progress, step="password", detail="Sử dụng mật khẩu tài khoản")
+                        page.wait_for_timeout(1200)
+                    if _fill_account_password(page, account_password):
+                        _emit(on_progress, step="password", detail="Điền mật khẩu tài khoản")
+                        page.wait_for_timeout(500)
+                        if not _click_enabled_next(page):
+                            try:
+                                page.keyboard.press("Enter")
+                            except Exception:
+                                pass
+                        break
+                    if _logged_in_now(page):
+                        break
+                    if _confirm_screen_visible(page):
+                        page.wait_for_timeout(500)
+                        if _click_use_password_instead(page):
+                            page.wait_for_timeout(1000)
+                    page.wait_for_timeout(400)
 
             _emit(on_progress, step="wait_otp_mail", detail="Chờ mã hoặc màn hình xác nhận…")
             otp_input = page.locator('input[autocomplete="one-time-code"]')
