@@ -98,6 +98,11 @@
     .signup-proxy { margin-bottom: 0.75rem; }
     .signup-proxy label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
     .signup-proxy textarea { width: 100%; min-height: 4.6rem; resize: vertical; }
+    #accountKhoList { margin-bottom: 0; }
+    .kho-list-panel { padding: 0.6rem 0.75rem; }
+    .kho-create-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    .kho-create-bar label { display: inline; margin-bottom: 0; font-size: 0.85rem; color: var(--text); }
+    .kho-create-bar .bar-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 0.25rem; }
     .created-kho .kho-btn {
       width: auto;
       background: var(--surface2);
@@ -376,19 +381,16 @@
             <h2>Quản lý tài khoản</h2>
             <div class="meta">Tạo kho, dán tài khoản, xóa kho — gom chung ở đây. Một kho mặc định 50 tài khoản, bạn đổi được thành 100, 1000 tùy ý. Kho đã có sẵn giữ nguyên số tài khoản, chỉ áp dụng cho kho mới và tài khoản thêm mới.</div>
           </div>
-          <div class="toolbar">
-            <button type="button" class="btn-primary" id="btnOpenImportAccount">Dán tài khoản</button>
-            <button type="button" class="btn-ghost" id="btnNewWarehouseAccount">+ Kho trống</button>
-          </div>
         </div>
-        <div class="signup-proxy">
+        <div class="signup-proxy kho-create-bar">
           <label for="accountPerWarehouse">Số TK / kho — mặc định 50, sửa được (1–1000).</label>
-          <div class="toolbar">
-            <input type="number" id="accountPerWarehouse" value="50" min="1" max="1000" style="width:5.5rem;" />
-            <button type="button" class="btn-primary" id="btnSavePerWarehouse">Lưu</button>
-          </div>
+          <input type="number" id="accountPerWarehouse" value="50" min="1" max="1000" style="width:5.5rem;" />
+          <button type="button" class="btn-primary" id="btnSavePerWarehouse">Lưu</button>
+          <span class="bar-sep"></span>
+          <button type="button" class="btn-primary" id="btnNewWarehouseAccount">+ Tạo kho mới</button>
+          <button type="button" class="btn-ghost" id="btnOpenImportAccount">Dán tài khoản</button>
         </div>
-        <div class="panel">
+        <div class="panel kho-list-panel">
           <div class="created-kho" id="accountKhoList"></div>
         </div>
       <div class="top">
@@ -1301,9 +1303,14 @@
     });
     document.getElementById('btnOpenImportAccount').addEventListener('click', openDrawer);
     document.getElementById('btnNewWarehouseAccount').addEventListener('click', async () => {
-      await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const res = await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      if (data.ok && data.warehouse && data.warehouse.id) {
+        await fetch('/api/warehouses/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.warehouse.id }) });
+      }
       await refreshAll();
-      toast('Đã tạo kho mới');
+      toast('Đã tạo kho mới — dán tài khoản vào kho này');
+      openDrawer();
     });
     document.getElementById('btnSavePerWarehouse').addEventListener('click', async () => {
       const input = document.getElementById('accountPerWarehouse');
