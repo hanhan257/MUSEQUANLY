@@ -48,10 +48,13 @@ from warehouse_store import (
     set_active_created_warehouse,
     create_warehouse,
     ensure_initialized,
+    export_created_login_data,
+    export_login_data,
     find_created_account,
     get_account_password_for_email,
     get_accounts_for_warehouse,
     get_accounts_per_warehouse,
+    get_mailtm_password_for_email,
     get_active_warehouse,
     get_proxy_for_email,
     get_totp_secret_for_email,
@@ -75,7 +78,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v80"
+APP_BUILD = "signup-v81"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -272,7 +275,7 @@ def api_save_accounts():
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret = parsed
+        email, lay2fa_url, totp_secret, mail_password = parsed
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
         index += 1
         key = email.lower()
@@ -280,7 +283,7 @@ def api_save_accounts():
             continue
         seen.add(key)
         rows.append(
-            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy}
+            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy, "mailtm_password": mail_password}
         )
     active = get_active_warehouse()
     if active.get("kind") != "error" and len(rows) > get_accounts_per_warehouse():
@@ -304,7 +307,7 @@ def api_import_accounts():
         parsed = parse_account_line(str(line))
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret = parsed
+        email, lay2fa_url, totp_secret, mail_password = parsed
         key = email.lower()
         if key not in by_email:
             added += 1
@@ -314,6 +317,7 @@ def api_import_accounts():
             "lay2fa_url": lay2fa_url,
             "totp_secret": totp_secret or previous.get("totp_secret", ""),
             "proxy": previous.get("proxy", ""),
+            "mailtm_password": mail_password or previous.get("mailtm_password", ""),
         }
     merged = list(by_email.values())
     if len(merged) > get_accounts_per_warehouse():
@@ -322,13 +326,30 @@ def api_import_accounts():
     return jsonify({"ok": True, "added": added, "total": len(by_email)})
 
 
+@app.post("/api/accounts/export-login")
+def api_export_login_data():
+    body = request.get_json(force=True, silent=True) or {}
+    scope = (body.get("scope") or "regular").strip().lower()
+    emails = body.get("emails") or []
+    if isinstance(emails, str):
+        emails = emails.splitlines()
+    wanted = {(e or "").strip().lower() for e in emails if (e or "").strip()}
+    wanted = wanted or None
+    if scope == "created":
+        kind = "password" if body.get("created_kind") == "password" else "plain"
+        text, count = export_created_login_data(body.get("warehouse_id"), kind, wanted)
+    else:
+        text, count = export_login_data(body.get("warehouse_id"), wanted)
+    return jsonify({"ok": True, "text": text, "count": count})
+
+
 def _login_creds(email: str) -> dict:
     created = find_created_account(email) or {}
     proxy = (created.get("proxy") or "").strip() or get_proxy_for_email(email)
     return {
         "proxy": proxy or None,
         "totp_secret": get_totp_secret_for_email(email) or None,
-        "mailtm_password": (created.get("mailtm_password") or "").strip() or None,
+        "mailtm_password": (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email) or None,
         "account_password": get_account_password_for_email(email) or None,
     }
 
@@ -337,7 +358,7 @@ def _login_creds(email: str) -> dict:
 def api_otp(email: str):
     email = email.strip()
     created = find_created_account(email) or {}
-    mailbox_password = (created.get("mailtm_password") or "").strip()
+    mailbox_password = (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email)
     if mailbox_password:
         from tempmail_plus_client import TempMailPlusError, latest_code
 

@@ -317,6 +317,7 @@
         </label>
         <button type="button" class="btn-primary" id="btnCopyFiltered">Copy đã tích</button>
         <button type="button" class="btn-ghost" id="btnExportFiltered">Xuất TXT đã tích</button>
+        <button type="button" class="btn-ghost" id="btnExportLogin">Xuất data đăng nhập</button>
         <button type="button" class="btn-ghost" id="btnReload">Tải lại</button>
         <button type="button" class="btn-ghost" id="btnRename">Đổi tên kho</button>
       </div>
@@ -353,6 +354,7 @@
             <button type="button" class="btn-primary" id="btnCreatedRelogin">Đăng nhập lấy lại cookie</button>
             <button type="button" class="btn-primary" id="btnCreatedCopyCookies">Trích xuất cookie</button>
             <button type="button" class="btn-ghost" id="btnCreatedExportCookies">Xuất TXT</button>
+            <button type="button" class="btn-ghost" id="btnCreatedExportLogin">Xuất data đăng nhập</button>
             <label class="check-inline"><input type="checkbox" id="createdSkipExisting" checked /> Bỏ qua TK đã có cookie</label>
           </div>
         </div>
@@ -461,7 +463,7 @@
   <div class="drawer-back" id="drawerBack"></div>
   <aside class="drawer" id="drawer">
     <h3>Nhập tài khoản</h3>
-    <p class="hint">Hỗ trợ cả 2 định dạng: <code>email|lay2fa.xyz/email|MÃ 2FA</code> và <code>email|mật khẩu|2FA hoặc ghi chú</code>. Nếu tài khoản đăng nhập bằng mật khẩu, nhập email, chọn use password instead, rồi điền mật khẩu. Dán nhiều dòng sẽ tự chia vào các kho, mỗi kho tối đa số TK/kho đang cài trong Quản lý tài khoản.</p>
+    <p class="hint">Hỗ trợ cả 2 định dạng: <code>email|lay2fa.xyz/email|MÃ 2FA</code> và <code>email|mật khẩu|2FA hoặc ghi chú</code>. Nếu tài khoản đăng nhập bằng mật khẩu, nhập email, chọn use password instead, rồi điền mật khẩu. Dòng do tool xuất có thêm ô thứ 4 là mật khẩu hộp thư (<code>email|mật khẩu/link lay2fa|MÃ 2FA|mật khẩu hộp thư</code>) — dán vào kho khác vẫn đăng nhập được. Dán nhiều dòng sẽ tự chia vào các kho, mỗi kho tối đa số TK/kho đang cài trong Quản lý tài khoản.</p>
     <section>
       <div class="side-label">Dán nhiều kho</div>
       <textarea id="bulkImportEditor" placeholder="email|lay2fa.xyz/email|OP73 7X6Q POFO JANG&#10;email|MetaPass@123|ABCDEF"></textarea>
@@ -819,6 +821,46 @@
       if (!lines.length) { toast('Không có cookie được tích'); return; }
       await navigator.clipboard.writeText(lines.join('\n'));
       toast(`Đã copy ${lines.length} dòng`);
+    }
+
+    function downloadText(filename, text) {
+      const blob = new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    async function exportLoginDownload() {
+      const emails = filteredAccounts()
+        .filter(a => !excludedExport.has(a.email.toLowerCase()))
+        .map(a => a.email);
+      const res = await fetch('/api/accounts/export-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails }),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.count) { toast('Không có tài khoản để xuất'); return; }
+      const kho = (document.getElementById('khoTitle').textContent || 'Kho').trim().replace(/[\\/:*?"<>|]/g, '');
+      downloadText(`login-data-${kho} - ${data.count} TK.txt`, data.text);
+      toast(`Đã xuất ${data.count} tài khoản`);
+    }
+
+    async function exportCreatedLoginDownload() {
+      const kind = viewMode === 'password' ? 'password' : 'plain';
+      const active = (createdBoard.warehouses || []).find(w => w.active);
+      const res = await fetch('/api/accounts/export-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'created', created_kind: kind, warehouse_id: active ? active.id : null }),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.count) { toast('Không có tài khoản để xuất'); return; }
+      const name = (active ? active.name : 'Kho-da-tao').replace(/[\\/:*?"<>|]/g, '');
+      downloadText(`login-data-${name} - ${data.count} TK.txt`, data.text);
+      toast(`Đã xuất ${data.count} tài khoản`);
     }
 
     async function copyCookie(encodedEmail) {
@@ -1246,6 +1288,7 @@
     });
     document.getElementById('btnCopyFiltered').addEventListener('click', copyFiltered);
     document.getElementById('btnExportFiltered').addEventListener('click', exportFilteredDownload);
+    document.getElementById('btnExportLogin').addEventListener('click', exportLoginDownload);
     ['cookieSearch', 'cookieFilter'].forEach(id => {
       document.getElementById(id).addEventListener('input', renderTable);
       document.getElementById(id).addEventListener('change', renderTable);
@@ -1785,6 +1828,7 @@
     }
     document.getElementById('btnCreatedCopyCookies').addEventListener('click', copyCreatedCookies);
     document.getElementById('btnCreatedExportCookies').addEventListener('click', exportCreatedCookies);
+    document.getElementById('btnCreatedExportLogin').addEventListener('click', exportCreatedLoginDownload);
     document.getElementById('btnCreatedCookies').addEventListener('click', () => startCreatedCookies(false));
     document.getElementById('btnCreatedTokenCheck').addEventListener('click', startCreatedTokenCheck);
     document.getElementById('btnCreatedRedeem').addEventListener('click', startCreatedRedeem);

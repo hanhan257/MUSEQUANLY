@@ -19,9 +19,15 @@ MIN_ACCOUNTS_PER_WAREHOUSE = 1
 MAX_ACCOUNTS_PER_WAREHOUSE = 1000
 
 
-def get_accounts_per_warehouse() -> int:
-    """Số tài khoản tối đa mỗi kho — người dùng chỉnh được, mặc định 50."""
-    data = ensure_initialized()
+def get_accounts_per_warehouse(data: dict[str, Any] | None = None) -> int:
+    """Số tài khoản tối đa mỗi kho — người dùng chỉnh được, mặc định 50.
+    Đọc trực tiếp từ file (không qua ensure_initialized) để tránh đệ quy
+    khi được gọi trong lúc khởi tạo kho (_pack_created_warehouses)."""
+    if data is None:
+        try:
+            data = _load()
+        except RuntimeError:
+            data = {}
     try:
         value = int(data.get("accounts_per_warehouse"))
     except (TypeError, ValueError):
@@ -100,11 +106,51 @@ def migrate_from_legacy_accounts_txt() -> None:
 
 
 def _account_line(account: dict[str, str]) -> str:
+    """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư.
+    Ô 3 và ô 4 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập được."""
     line = f"{account['email']}|{account.get('lay2fa_url', '')}"
     secret = (account.get("totp_secret") or "").strip()
+    mail_pw = (account.get("mailtm_password") or "").strip()
     if secret:
         line += f"|{secret}"
+    if mail_pw:
+        if not secret:
+            line += "|"
+        line += f"|{mail_pw}"
     return line
+
+
+def export_login_data(warehouse_id: str | None = None, emails: set[str] | None = None) -> tuple[str, int]:
+    """Xuất data đăng nhập của kho (mặc định kho đang chọn). emails rỗng = xuất cả kho."""
+    accounts = get_accounts_for_warehouse(warehouse_id)
+    lines = [
+        _account_line(a)
+        for a in accounts
+        if not emails or (a.get("email") or "").lower() in emails
+    ]
+    return "\n".join(lines), len(lines)
+
+
+def export_created_login_data(
+    warehouse_id: str | None = None, kind: str = "plain", emails: set[str] | None = None
+) -> tuple[str, int]:
+    """Xuất data đăng nhập của kho đã tạo (mặc định kho đang chọn của loại đó).
+    Đọc dòng thô (không qua _created_account_view) để lấy đúng mật khẩu hộp thư."""
+    data = ensure_initialized()
+    kind = "password" if kind == "password" else "plain"
+    warehouses = [wh for wh in data.get("created_warehouses") or [] if wh.get("kind") == kind]
+    active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
+    active_id = warehouse_id or data.get(active_key)
+    current = next((wh for wh in warehouses if wh.get("id") == active_id), None)
+    if current is None and warehouses:
+        current = warehouses[0]
+    accounts = (current.get("accounts") or []) if current else []
+    lines = [
+        _account_line(a)
+        for a in accounts
+        if not emails or (a.get("email") or "").lower() in emails
+    ]
+    return "\n".join(lines), len(lines)
 
 
 def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
@@ -116,7 +162,7 @@ def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret = parsed
+        email, lay2fa_url, totp_secret, mail_password = parsed
         key = email.lower()
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
         index += 1
@@ -124,7 +170,7 @@ def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
             continue
         seen.add(key)
         rows.append(
-            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy}
+            {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy, "mailtm_password": mail_password}
         )
     return rows
 
@@ -189,8 +235,6 @@ def ensure_initialized() -> dict[str, Any]:
     if not data.get("active_warehouse_id"):
         data["active_warehouse_id"] = _regular_warehouses(data)[0]["id"]
         changed = True
-    if _detach_created_accounts(data):
-        changed = True
     if _pack_created_warehouses(data):
         changed = True
     if _split_created_by_kind(data):
@@ -198,27 +242,6 @@ def ensure_initialized() -> dict[str, Any]:
     if changed:
         _save(data)
     return _load()
-
-
-def _detach_created_accounts(data: dict[str, Any]) -> bool:
-    """Mail tạo bằng tool không nằm trong kho thường."""
-    created = data.setdefault("created_accounts", [])
-    known = {(acc.get("email") or "").strip().lower() for acc in created}
-    changed = False
-    for wh in data.get("warehouses") or []:
-        kept = []
-        for acc in wh.get("accounts") or []:
-            if acc.get("mailtm_password"):
-                key = (acc.get("email") or "").strip().lower()
-                if key and key not in known:
-                    created.append(acc)
-                    known.add(key)
-                changed = True
-                continue
-            kept.append(acc)
-        if len(kept) != len(wh.get("accounts") or []):
-            wh["accounts"] = kept
-    return changed
 
 
 def get_warehouse(warehouse_id: str | None, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -273,13 +296,13 @@ def list_warehouses_summary() -> dict[str, Any]:
                 "name": wh.get("name", "Kho"),
                 "kind": "error" if is_error else "normal",
                 "count": len(acc),
-                "max": None if is_error else get_accounts_per_warehouse(),
+                "max": None if is_error else get_accounts_per_warehouse(data),
                 "active": wh["id"] == data.get("active_warehouse_id"),
             }
         )
     return {
         "active_warehouse_id": data.get("active_warehouse_id"),
-        "max_per_warehouse": get_accounts_per_warehouse(),
+        "max_per_warehouse": get_accounts_per_warehouse(data),
         "warehouses": items,
     }
 
@@ -316,8 +339,8 @@ def save_active_accounts(rows: list[dict[str, str]]) -> None:
     wh = get_warehouse(wh_id, data)
     if not wh:
         return
-    if not _is_error_warehouse(wh) and len(rows) > get_accounts_per_warehouse():
-        raise ValueError(f"Mỗi kho tối đa {get_accounts_per_warehouse()} tài khoản.")
+    if not _is_error_warehouse(wh) and len(rows) > get_accounts_per_warehouse(data):
+        raise ValueError(f"Mỗi kho tối đa {get_accounts_per_warehouse(data)} tài khoản.")
     known = _mailtm_passwords(data)
     wh["accounts"] = [_keep_mailtm_password(row, known) for row in rows]
     _save(data)
@@ -454,10 +477,10 @@ def _append_created_row(data: dict[str, Any], row: dict[str, Any], kind: str = "
     same = [wh for wh in warehouses if wh.get("kind") == kind]
     active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
     active = next((wh for wh in same if wh.get("id") == data.get(active_key)), None)
-    if active is not None and len(active.get("accounts") or []) < get_accounts_per_warehouse():
+    if active is not None and len(active.get("accounts") or []) < get_accounts_per_warehouse(data):
         target = active
     else:
-        target = next((wh for wh in same if len(wh.get("accounts") or []) < get_accounts_per_warehouse()), None)
+        target = next((wh for wh in same if len(wh.get("accounts") or []) < get_accounts_per_warehouse(data)), None)
     if target is None:
         target = {"id": _new_id(), "name": f"Kho {len(same) + 1}", "kind": kind, "accounts": []}
         warehouses.append(target)
@@ -588,14 +611,14 @@ def _split_created_by_kind(data: dict[str, Any]) -> bool:
             if not rows:
                 return [{"id": _new_id(), "name": "Kho 1", "kind": kind, "accounts": []}]
             out = []
-            for index in range(0, len(rows), get_accounts_per_warehouse()):
-                number = index // get_accounts_per_warehouse() + 1
+            for index in range(0, len(rows), get_accounts_per_warehouse(data)):
+                number = index // get_accounts_per_warehouse(data) + 1
                 out.append(
                     {
                         "id": _new_id(),
                         "name": f"Kho {number}",
                         "kind": kind,
-                        "accounts": rows[index : index + get_accounts_per_warehouse()],
+                        "accounts": rows[index : index + get_accounts_per_warehouse(data)],
                     }
                 )
             return out
@@ -629,7 +652,7 @@ def list_created_accounts(warehouse_id: str | None = None, kind: str = "plain") 
             "id": wh.get("id"),
             "name": wh.get("name") or "Kho",
             "count": len(wh.get("accounts") or []),
-            "max": get_accounts_per_warehouse(),
+            "max": get_accounts_per_warehouse(data),
             "kind": kind,
             "active": current is not None and wh.get("id") == current.get("id"),
         }
@@ -855,12 +878,12 @@ def restore_account_from_error(email: str) -> dict[str, Any]:
         raise ValueError("Tài khoản không nằm trong kho lỗi.")
     error["accounts"] = [a for a in error.get("accounts") or [] if a.get("email", "").lower() != key]
     target = get_warehouse(acc.get("from_warehouse_id"), data)
-    if not target or _is_error_warehouse(target) or len(target.get("accounts") or []) >= get_accounts_per_warehouse():
+    if not target or _is_error_warehouse(target) or len(target.get("accounts") or []) >= get_accounts_per_warehouse(data):
         target = next(
             (
                 wh
                 for wh in _regular_warehouses(data)
-                if len(wh.get("accounts") or []) < get_accounts_per_warehouse()
+                if len(wh.get("accounts") or []) < get_accounts_per_warehouse(data)
             ),
             None,
         )
@@ -908,6 +931,15 @@ def get_totp_secret_for_email(email: str) -> str:
     if not found:
         return ""
     return (found[1].get("totp_secret") or "").strip()
+
+
+def get_mailtm_password_for_email(email: str) -> str:
+    """Mật khẩu hộp thư của tài khoản (để tool tự lấy mã OTP từ tempmail.plus)."""
+    data = ensure_initialized()
+    found = _find_account(data, email)
+    if not found:
+        return ""
+    return (found[1].get("mailtm_password") or "").strip()
 
 
 def warehouse_emails(warehouse_id: str | None = None) -> list[str]:

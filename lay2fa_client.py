@@ -57,8 +57,10 @@ def email_from_lay2fa_url(url: str) -> str | None:
     return None
 
 
-def parse_account_line(line: str) -> tuple[str, str, str] | None:
-    """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú."""
+def parse_account_line(line: str) -> tuple[str, str, str, str] | None:
+    """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú,
+    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư.
+    Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư)."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
@@ -67,19 +69,14 @@ def parse_account_line(line: str) -> tuple[str, str, str] | None:
         return None
 
     email = parts[0]
-    rest = " ".join(parts[1:]).split()
     second = parts[1] if len(parts) > 1 else ""
-    secret = " ".join(rest[1:]) if len(parts) >= 3 else ""
+    secret = parts[2] if len(parts) > 2 else ""
+    mail_password = parts[3] if len(parts) > 3 else ""
 
-    if len(parts) >= 3 and second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
+    if second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
         url = second
-        secret = " ".join(parts[2:]) if len(parts) > 2 else ""
-    elif len(parts) >= 2 and second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
-        url = second
-        secret = ""
     else:
-        url = normalize_lay2fa_url(second if len(parts) > 1 else "", email)
-        secret = " ".join(parts[2:]) if len(parts) > 2 else ""
+        url = normalize_lay2fa_url(second, email)
 
     if "@" not in email:
         inferred = email_from_lay2fa_url(url)
@@ -87,7 +84,7 @@ def parse_account_line(line: str) -> tuple[str, str, str] | None:
             email = inferred
         else:
             return None
-    return email, url, secret
+    return email, url, secret, mail_password
 
 
 def fetch_2fa_live_code(secret: str) -> str:
