@@ -324,12 +324,14 @@
         </div>
         <div class="created-kho" id="createdKhoList"></div>
         <div class="signup-proxy">
-          <label for="signupProxies">Mỗi dòng một tài khoản. 100 dòng thì tạo 100 tài khoản, chỉ mở 5 Chrome cùng lúc. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
+          <label for="signupProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa 5 làn. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
           <textarea id="signupProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
         </div>
         <div class="signup-proxy">
           <label for="signupInviteCode">Mã mời cho tài khoản đầu tiên — tài khoản sau tự vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước. Để trống thì dùng mã đã lưu, chưa có mã thì tài khoản đầu bỏ qua.</label>
           <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
+          <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. 3 proxy × 5 TK thì tối đa 15 tài khoản.</label>
+          <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
         </div>
         <div class="panel">
           <div id="signupStatus" class="login-status"></div>
@@ -1164,6 +1166,7 @@
       document.querySelectorAll('[data-signup-count], #btnCustomSignup').forEach(btn => { btn.disabled = disabled; });
       document.getElementById('signupCustomCount').disabled = disabled;
       document.getElementById('signupInviteCode').disabled = disabled;
+      document.getElementById('signupPerProxy').disabled = disabled;
     }
     async function startSignup(count, mode) {
       const proxies = signupProxyLines();
@@ -1172,20 +1175,17 @@
         setSignupStatus('Mã mời chỉ gồm chữ và số, dài 4–16 ký tự.', 'error');
         return;
       }
+      const perProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('signupPerProxy').value || '5', 10) || 5));
       if (proxies.length > 200) {
         setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
         return;
       }
-      if (proxies.length) count = proxies.length;
-      const used = proxies.slice(0, count);
-      if (proxies.length && used.length < count) {
-        setSignupStatus(`Mỗi tài khoản cần 1 dòng proxy. Cần ${count} dòng, đang có ${proxies.length}.`, 'error');
-        return;
-      }
+      if (proxies.length) count = Math.min(count, proxies.length * perProxy);
+      const used = proxies.slice(0, Math.ceil(count / perProxy));
       setSignupButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, 5) : 1;
-      const proxyNote = used.length ? ` · ${count} tài khoản từ ${count} proxy, 5 Chrome cùng lúc` : '';
+      const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
       const lead = mode === 'plain' ? 'Đang tạo mail @mailto.plus, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
@@ -1194,7 +1194,7 @@
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode }),
+        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy }),
       });
       const data = await res.json();
       if (!data.ok) {

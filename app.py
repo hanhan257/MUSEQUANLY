@@ -65,7 +65,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v64"
+APP_BUILD = "signup-v65"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -699,7 +699,7 @@ def _signup_one(
     proxy: str = "",
     index: int = 0,
     chain: _InviteChain | None = None,
-) -> None:
+) -> bool:
     box = {"email": "", "published": False}
 
     def on_invite(code: str | None) -> None:
@@ -710,7 +710,7 @@ def _signup_one(
             set_created_invite_code(box["email"], code)
 
     try:
-        _signup_one_run(
+        return _signup_one_run(
             job_id,
             count=count,
             mode=mode,
@@ -722,6 +722,8 @@ def _signup_one(
             box=box,
             on_invite=on_invite,
         )
+    except Exception:
+        return False
     finally:
         if chain is not None and not box["published"]:
             chain.publish(index, None)
@@ -739,7 +741,7 @@ def _signup_one_run(
     chain: _InviteChain | None,
     box: dict,
     on_invite,
-) -> None:
+) -> bool:
     from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
 
     email = ""
@@ -854,7 +856,7 @@ def _signup_one_run(
         error = str(exc)
     if not ok:
         note_fail(error or "Không tạo được", closed=True)
-        return
+        return False
     with state_lock:
         state["running"] = [item for item in state["running"] if item != email]
         state["finished"] += 1
@@ -872,16 +874,92 @@ def _signup_one_run(
         )
     else:
         publish()
+    return True
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "") -> None:
+def _run_signup_lane(
+    job_id: str,
+    *,
+    count: int,
+    mode: str,
+    state: dict,
+    state_lock: threading.Lock,
+    proxy: str,
+    indices: list[int],
+    chain: _InviteChain | None,
+) -> None:
+    """Một proxy chạy lần lượt từng tài khoản. Tài khoản lỗi thì báo lỗi rồi
+    dừng làn này, các tài khoản còn lại trên proxy đó bỏ qua, làn khác vẫn chạy."""
+    for pos, index in enumerate(indices):
+        if stop_requested():
+            return
+        ok = _signup_one(
+            job_id,
+            count=count,
+            mode=mode,
+            state=state,
+            state_lock=state_lock,
+            proxy=proxy,
+            index=index,
+            chain=chain,
+        )
+        if ok:
+            continue
+        rest = indices[pos + 1:]
+        if not rest:
+            return
+        with state_lock:
+            for skipped in rest:
+                state["fail"] += 1
+                state["finished"] += 1
+                state["failures"].append(
+                    f"TK #{skipped + 1}: bỏ qua, proxy {proxy or 'VPN'} đã lỗi ở TK trước"
+                )
+            running = list(state["running"])
+            fails = list(state["failures"])
+            text = (
+                f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+                + (f" · đang chạy {', '.join(running)}" if running else "")
+            )
+            note = state.get("invite_note") or ""
+            if note and note not in text:
+                text = note + "\n" + text
+            if fails:
+                text += "\n" + "\n".join(fails)
+        if chain is not None:
+            for skipped in rest:
+                chain.publish(skipped, None)
+        _set_job(
+            job_id,
+            {
+                "status": "running",
+                "step": "batch",
+                "detail": text,
+                "done_count": state["finished"],
+                "ok_count": state["ok"],
+                "fail_count": state["fail"],
+                "failures": fails,
+                "total": count,
+            },
+        )
+        return
+
+
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5) -> None:
     clear_stop()
     proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
     seed = (seed or "").strip().upper()
+    per_proxy = max(1, min(50, int(per_proxy or 5)))
+    if proxies:
+        count = min(count, len(proxies) * per_proxy)
     state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
     state_lock = threading.Lock()
-    workers = _signup_workers(count, len(proxies))
-    via = f" · mỗi tài khoản 1 proxy" if proxies else ""
+    if proxies:
+        workers = min(len(proxies), PROXY_PARALLEL)
+        via = f" · {len(proxies)} proxy × {per_proxy} TK/proxy"
+    else:
+        workers = _signup_workers(count, 0)
+        via = ""
     seed_note = f" · mã mời {seed} cho TK đầu" if seed else ""
     _set_job(
         job_id,
@@ -896,22 +974,45 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         },
     )
     chain = _InviteChain(count, seed or latest_invite_code())
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(
-            pool.map(
-                lambda index: _signup_one(
-                    job_id,
-                    count=count,
-                    mode=mode,
-                    state=state,
-                    state_lock=state_lock,
-                    proxy=proxies[index] if index < len(proxies) else "",
-                    index=index,
-                    chain=chain,
-                ),
-                range(count),
+    if proxies:
+        lanes = [
+            (proxy, list(range(j * per_proxy, min((j + 1) * per_proxy, count))))
+            for j, proxy in enumerate(proxies)
+        ]
+        lanes = [(proxy, idxs) for proxy, idxs in lanes if idxs]
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(
+                pool.map(
+                    lambda lane: _run_signup_lane(
+                        job_id,
+                        count=count,
+                        mode=mode,
+                        state=state,
+                        state_lock=state_lock,
+                        proxy=lane[0],
+                        indices=lane[1],
+                        chain=chain,
+                    ),
+                    lanes,
+                )
             )
-        )
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(
+                pool.map(
+                    lambda index: _signup_one(
+                        job_id,
+                        count=count,
+                        mode=mode,
+                        state=state,
+                        state_lock=state_lock,
+                        proxy="",
+                        index=index,
+                        chain=chain,
+                    ),
+                    range(count),
+                )
+            )
     try:
         set_invite_chain_code(chain.tail())
     except Exception:
@@ -1066,16 +1167,18 @@ def api_signup():
     invite_code = (body.get("invite_code") or "").strip().upper()
     if invite_code and not re.fullmatch(r"[A-Z0-9]{4,16}", invite_code):
         return jsonify({"ok": False, "error": "Mã mời chỉ gồm chữ và số, dài 4–16 ký tự."}), 400
+    try:
+        per_proxy = int(body.get("per_proxy") or 5)
+    except (TypeError, ValueError):
+        per_proxy = 5
+    per_proxy = max(1, min(50, per_proxy))
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
-    if proxies and len(proxies) < count:
-        return jsonify({
-            "ok": False,
-            "error": f"Mỗi tài khoản cần 1 dòng proxy. Cần {count} dòng, đang có {len(proxies)}.",
-        }), 400
+    if proxies:
+        count = min(count, len(proxies) * per_proxy)
     proxies = proxies[:count]
     job_id = uuid.uuid4().hex[:12]
-    workers = _signup_workers(count, len(proxies))
+    workers = min(len(proxies), PROXY_PARALLEL) if proxies else _signup_workers(count, 0)
     _set_job(
         job_id,
         {
@@ -1085,9 +1188,9 @@ def api_signup():
             "total": count,
         },
     )
-    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code), daemon=True)
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy), daemon=True)
     thread.start()
-    return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers})
+    return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy})
 
 
 @app.post("/api/login")
