@@ -420,7 +420,6 @@ GENERAL_NAME = re.compile(r"^Chung$|^General$", re.I)
 USAGE_NAME = re.compile(r"^Mức sử dụng$|^Sử dụng$|^Usage$", re.I)
 INVITE_OPEN = re.compile(r"^Mời$|^Invite$", re.I)
 INVITE_PANEL = re.compile(r"Invite friends|Mời bạn bè|Copy referral link|Sao chép liên kết", re.I)
-REVEAL_CODE = re.compile(r"Hiện mã|Reveal|Show code|Xem mã", re.I)
 COPY_CODE = re.compile(r"Copy referral link|Sao chép liên kết giới thiệu|Sao chép liên kết|^Sao chép$|^Copy$|^Copy code$", re.I)
 REDEEM_OK = re.compile(r"^Quy đổi$|^Xác nhận$|^Redeem$|^Confirm$", re.I)
 INVITE_OK = re.compile(
@@ -2176,32 +2175,268 @@ def _read_invite_box(page: Page, email: str) -> str:
 
 def _clipboard_invite(page: Page, email: str) -> str:
     try:
-        copied = page.evaluate("() => navigator.clipboard.readText()") or ""
+        page.context.grant_permissions(
+            ["clipboard-read", "clipboard-write"], origin="https://muse.ai"
+        )
+    except Exception:
+        pass
+    try:
+        copied = page.evaluate("() => navigator.clipboard.readText().catch(() => '')") or ""
     except Exception:
         copied = ""
     return _pick_invite_code(str(copied), email)
 
 
-def _harvest_invite_code(page: Page, email: str, on_progress: ProgressCallback | None) -> str:
-    """Mã trong khung Invite, ô như 23IVJJ, cạnh nút Copy referral link."""
-    _emit(on_progress, step="invite", detail="Mở Invite và lấy mã giới thiệu")
-    for _ in range(24):
+_INVITE_CODE_DOM_JS = r"""() => {
+  const isCode = (s) => /^[A-Z0-9]{6}$/.test((s || '').trim());
+  // Ma nam trong span co title chinh la ma; lop canvas chi phu len tren de che mat.
+  for (const el of document.querySelectorAll('[title]')) {
+    const t = (el.getAttribute('title') || '').trim();
+    if (isCode(t) && (el.textContent || '').trim() === t) return t;
+  }
+  // Dong trang thai cho trinh doc man hinh khi ma da lo:
+  // "Da tiet lo ma loi moi: ATGXDX" / "Invite code revealed:".
+  for (const el of document.querySelectorAll('span')) {
+    if (el.childElementCount > 0) continue;
+    const m = (el.textContent || '').match(/(?:mã lời mời|invite code)[^A-Z0-9]{0,12}([A-Z0-9]{6})/i);
+    if (m) return m[1].toUpperCase();
+  }
+  for (const el of document.querySelectorAll('[data-pel-impression*="invite_code"]')) {
+    const t = (el.textContent || '').trim();
+    if (isCode(t)) return t;
+    const title = (el.getAttribute('title') || '').trim();
+    if (isCode(title)) return title;
+  }
+  const bodyText = document.body ? (document.body.textContent || '') : '';
+  const ann = bodyText.match(/(?:mã lời mời|invite code)[^A-Z0-9]{0,20}([A-Z0-9]{6})/i);
+  if (ann) return ann[1].toUpperCase();
+  return '';
+}"""
+
+
+_SCRATCH_RECT_JS = r"""() => {
+  const rectOf = (el) => {
+    const r = el.getBoundingClientRect();
+    return {x: r.x, y: r.y, width: r.width, height: r.height};
+  };
+  const isCode = (s) => /^[A-Z0-9]{6}$/.test((s || '').trim());
+  // 1. Theo cau truc, khong theo ngon ngu: canvas nam cung container voi span mang ma.
+  for (const el of document.querySelectorAll('[title]')) {
+    const t = (el.getAttribute('title') || '').trim();
+    if (!isCode(t)) continue;
+    let node = el;
+    for (let i = 0; i < 4 && node; i++) {
+      const c = node.querySelector ? node.querySelector('canvas') : null;
+      if (c) {
+        const r = c.getBoundingClientRect();
+        if (r.width > 0) return rectOf(c);
+      }
+      node = node.parentElement;
+    }
+  }
+  // 2. Canvas dong vai tro nut trong panel Moi (role=button, phu kin thanh ma).
+  for (const c of document.querySelectorAll('canvas[role="button"]')) {
+    const r = c.getBoundingClientRect();
+    if (r.width > 0 && r.height >= 8) return rectOf(c);
+  }
+  // 3. Theo aria-label cua canvas.
+  for (const c of document.querySelectorAll('canvas')) {
+    if (/mã lời mời|invite code/i.test(c.getAttribute('aria-label') || '')) {
+      const r = c.getBoundingClientRect();
+      if (r.width > 0) return rectOf(c);
+    }
+  }
+  // 4. O chu "Scratch to reveal" / "Cao de...": o cao that la mot thanh ngang.
+  const hits = [...document.querySelectorAll('div, span, button, canvas, section')].filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width >= 40 && r.height >= 8 && /scratch to reveal|cào để/i.test(el.textContent || '');
+  });
+  if (!hits.length) return null;
+  const bars = hits.filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width >= 150 && r.width <= 650 && r.height >= 24 && r.height <= 90;
+  });
+  const pool = bars.length ? bars : hits;
+  pool.sort((a, b) => {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return bars.length ? rb.width * rb.height - ra.width * ra.height : ra.width * ra.height - rb.width * rb.height;
+  });
+  return rectOf(pool[0]);
+}"""
+
+
+def _ok_invite_code(code: str, email: str) -> bool:
+    """Ma lay tu DOM da neo san (title == ma, hoac dong 'ma loi moi: XXXXXX') nen chi can loai ma trung mail va ma HAN gia."""
+    if not code:
+        return False
+    if code == (email or "").split("@", 1)[0].upper():
+        return False
+    if code.startswith("HAN") and code[3:].isdigit():
+        return False
+    return True
+
+
+def _scan_invite_code(page: Page, email: str) -> str:
+    """Doc ma thang tu DOM cua panel Moi.
+    Ma nam san trong DOM ke ca khi lop cao chua to mo, doc duoc la khoi can to hay copy."""
+    for frame in _frames(page):
+        try:
+            found = frame.evaluate(_INVITE_CODE_DOM_JS) or ""
+        except Exception:
+            continue
+        code = str(found).strip().upper()
+        if re.fullmatch(r"[A-Z0-9]{6}", code) and _ok_invite_code(code, email):
+            return code
+    return _read_invite_box(page, email)
+
+
+def _scratch_rect(page: Page):
+    for frame in _frames(page):
+        try:
+            box = frame.evaluate(_SCRATCH_RECT_JS)
+        except Exception:
+            continue
+        if box:
+            return box
+    return None
+
+
+def _harvest_via_copy_link(page: Page, email: str, seconds: float = 10) -> str:
+    """Bam "Copy referral link" roi boc ma khoi noi dung vua copy.
+    Chi co tac dung sau khi ma da lo (chua to mo lop phu thi nut copy con mo, copy khong ra ma).
+    Panel mo cham qua proxy nen cho nut copy xuat hien toi vai giay."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
         if stop_requested():
             raise RuntimeError("Đã dừng")
-        if not _invite_panel_open(page):
+        if page.is_closed():
+            return ""
+        if _click_enabled_button(page, COPY_CODE):
+            page.wait_for_timeout(700)
+            code = _clipboard_invite(page, email)
+            if code:
+                return code
+        page.wait_for_timeout(700)
+    return ""
+
+
+def _paint_slow(page: Page, x_from: float, x_to: float, y: float) -> None:
+    """Quet chuot CHAM tu x_from toi x_to tren hang y.
+    Trang xu ly vi tri chuot theo tung khung hinh (~60fps): quet nhanh la chuot nhay ca tram px, co chi cham duoc vai diem roi.
+    Moi doan ~10px nghi ~15ms thi khung nao cung bat duoc diem to, nhu tay nguoi to that."""
+    distance = abs(x_to - x_from)
+    steps = max(1, int(distance // 10))
+    for index in range(1, steps + 1):
+        page.mouse.move(x_from + (x_to - x_from) * index / steps, y)
+        page.wait_for_timeout(15)
+
+
+def _paint_reveal(page: Page, box: dict) -> bool:
+    """Mot luot to mo lop phu "Scratch to reveal".
+    Dua chuot vao o, nhan giu roi TO phu kin ca o — ngang tung hang cham rai, roi doc tung cot phu cheo.
+    Lop phu bi xoa o noi co quet qua; to du thi ma hien ra va nut Copy referral link chuyen xanh, bam duoc."""
+    try:
+        left = box["x"] + 4
+        right = box["x"] + box["width"] - 4
+        top = box["y"] + 4
+        bottom = box["y"] + box["height"] - 4
+        page.mouse.move((left + right) / 2, (top + bottom) / 2)
+        page.wait_for_timeout(400)
+        page.mouse.down()
+        page.wait_for_timeout(200)
+        rows = max(4, int((bottom - top) // 6) + 1)
+        for index in range(rows):
+            y = top + (bottom - top) * index / (rows - 1) if rows > 1 else (top + bottom) / 2
+            if index % 2 == 0:
+                page.mouse.move(left, y)
+                _paint_slow(page, left, right, y)
+            else:
+                page.mouse.move(right, y)
+                _paint_slow(page, right, left, y)
+        columns = max(3, int((right - left) // 60) + 1)
+        for index in range(columns):
+            x = left + (right - left) * index / (columns - 1) if columns > 1 else (left + right) / 2
+            page.mouse.move(x, top)
+            steps = max(1, int((bottom - top) // 10))
+            for step in range(1, steps + 1):
+                page.mouse.move(x, top + (bottom - top) * step / steps)
+                page.wait_for_timeout(15)
+        page.wait_for_timeout(200)
+        page.mouse.up()
+        page.wait_for_timeout(600)
+        return True
+    except Exception:
+        try:
+            page.mouse.up()
+        except Exception:
+            pass
+        return False
+
+
+def _harvest_invite_code(page: Page, email: str, on_progress: ProgressCallback | None) -> str:
+    """Lay ma gioi thieu tu panel "Moi ban be".
+    Ma bi che boi lop canvas "Scratch to reveal": bam thuong khong mo duoc, phai to chuot cao lop phu ra thi ma moi hien va nut Copy moi sang.
+    Thu tu: doc thang tu DOM (ma nam san trong span title) -> bam Copy referral link -> to mo lop phu (toi da 4 luot, moi luot doc lai + copy lai).
+    Khong lay duoc thi tra "" — tai khoan van luu binh thuong, khong lam hong ca lane."""
+    _emit(on_progress, step="invite", detail="Mở Invite và lấy mã giới thiệu")
+    code = ""
+    try:
+        deadline = time.monotonic() + 20
+        opened = False
+        while time.monotonic() < deadline:
+            if stop_requested():
+                raise RuntimeError("Đã dừng")
+            if _invite_panel_open(page):
+                opened = True
+                break
             if not _click_enabled_button(page, INVITE_OPEN):
                 _click_label(page, INVITE_OPEN)
-            page.wait_for_timeout(700)
-        _click_label(page, REVEAL_CODE)
-        code = _read_invite_box(page, email)
-        if not code and _invite_panel_open(page) and _click_enabled_button(page, COPY_CODE):
-            page.wait_for_timeout(400)
-            code = _clipboard_invite(page, email)
-        if code:
-            _emit(on_progress, step="invite", detail=f"Mã giới thiệu {code}")
-            return code
-        page.wait_for_timeout(700)
-    raise RuntimeError("Đã vào Muse nhưng chưa trích xuất được mã giới thiệu")
+            page.wait_for_timeout(800)
+        if opened:
+            code = _scan_invite_code(page, email)
+            if not code:
+                code = _harvest_via_copy_link(page, email)
+            for attempt in range(4):
+                if code or stop_requested():
+                    break
+                box = _scratch_rect(page)
+                if not box:
+                    break
+                try:
+                    page.evaluate(
+                        """(pt) => {
+                            const el = document.elementFromPoint(pt.x, pt.y);
+                            if (el) el.scrollIntoView({block: 'center', inline: 'center'});
+                        }""",
+                        {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2},
+                    )
+                    page.wait_for_timeout(400)
+                    box = _scratch_rect(page) or box
+                except Exception:
+                    pass
+                if not _paint_reveal(page, box):
+                    break
+                _emit(on_progress, step="invite", detail=f"Đã tô lớp phủ che mã mời (lần {attempt + 1})")
+                code = _scan_invite_code(page, email)
+                if not code:
+                    code = _harvest_via_copy_link(page, email, seconds=5)
+            if not code:
+                code = _scan_invite_code(page, email)
+    except Exception as exc:
+        if stop_requested() or str(exc) == "Đã dừng":
+            raise
+        code = ""
+    finally:
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+    if code:
+        _emit(on_progress, step="invite", detail=f"Mã giới thiệu {code}")
+    else:
+        _emit(on_progress, step="invite", detail="Chưa lấy được mã giới thiệu, tài khoản vẫn lưu bình thường")
+    return code
 
 
 _REDEEM_ROW_JS = r"""() => {
@@ -2276,15 +2511,87 @@ def _open_redeem(page: Page, on_progress: ProgressCallback | None = None) -> Non
     raise RuntimeError("Đã vào Muse nhưng chưa thấy Quy đổi mã lời mời")
 
 
+def _dialog_scope(page: Page):
+    """Phạm vi hộp thoại đang mở, để không đụng trang phía sau (khung chat vẫn có ô nhập)."""
+    try:
+        dialogs = page.locator('[role="dialog"]')
+        if dialogs.count() >= 1:
+            return dialogs.first
+    except Exception:
+        pass
+    return page
+
+
+def _fill_redeem_code(page: Page, code: str) -> bool:
+    """Điền mã 6 ký tự vào hộp thoại quy đổi, có đọc lại kiểm chứng.
+    Hộp thoại có 6 ô riêng (mỗi ô 1 ký tự): thử lần lượt điền từng ô -> bấm ô đầu rồi gõ như người dùng (các ô tự nhảy) -> điền một ô duy nhất chứa cả mã.
+    Chỉ dùng phạm vi hộp thoại [role="dialog"]; không có hộp thoại thì dùng ô nhập tìm được như cũ."""
+    try:
+        dialogs = page.locator('[role="dialog"]')
+        has_dialog = dialogs.count() >= 1
+    except Exception:
+        has_dialog = False
+    if not has_dialog:
+        field = _find_invite_input(page)
+        if field is None:
+            return False
+        _type_invite_code(field, code)
+        return True
+    scope = dialogs.first
+    try:
+        boxes = scope.locator("input:visible")
+        count = boxes.count()
+    except Exception:
+        count = 0
+    if count == 0:
+        return False
+
+    def total_filled() -> int:
+        try:
+            return sum(len(boxes.nth(index).input_value() or "") for index in range(boxes.count()))
+        except Exception:
+            return -1
+
+    if count == len(code) and count > 1:
+        try:
+            for index, char in enumerate(code):
+                boxes.nth(index).fill(char)
+        except Exception:
+            pass
+        if total_filled() == len(code):
+            return True
+    try:
+        boxes.first.click(timeout=5000)
+        page.keyboard.type(code, delay=80)
+    except Exception:
+        pass
+    if total_filled() == len(code):
+        return True
+    if count == 1:
+        try:
+            boxes.first.fill(code)
+        except Exception:
+            pass
+        return total_filled() == len(code)
+    return False
+
+
 def _redeem_invite(page: Page, code: str, on_progress: ProgressCallback | None) -> None:
     _emit(on_progress, step="invite", detail=f"Vào Cài đặt, quy đổi mã {code}")
     _open_redeem(page, on_progress)
-    field = _find_invite_input(page)
-    if field is None:
-        raise RuntimeError("Đã mở Quy đổi mã lời mời nhưng chưa thấy ô nhập mã")
-    _type_invite_code(field, code)
+    if not _fill_redeem_code(page, code):
+        raise RuntimeError("Đã mở Quy đổi mã lời mời nhưng chưa điền được mã")
     page.wait_for_timeout(400)
-    _click_enabled_button(page, REDEEM_OK)
+    clicked = False
+    for _ in range(20):
+        if stop_requested():
+            raise RuntimeError("Đã dừng")
+        if _click_enabled_button(page, REDEEM_OK):
+            clicked = True
+            break
+        page.wait_for_timeout(500)
+    if not clicked:
+        raise RuntimeError(f"Nút Xác nhận chưa sáng sau khi nhập mã {code}")
     for tick in range(16):
         if stop_requested():
             raise RuntimeError("Đã dừng")
@@ -2336,14 +2643,16 @@ def _chain_invites(
     context=None,
     on_redeem: Callable[[str | None], None] | None = None,
 ) -> tuple[str, str]:
-    """Thành công khi mã giới thiệu đã vào tool. Sau đó mới lưu cookie."""
+    """Lay ma gioi thieu cua tai khoan nay, luu cookie, roi quy doi ma cua tai khoan truoc.
+    Khong lay duoc ma rieng thi tai khoan van duoc luu (ma trong, chuoi roi ve ma gan nhat / ma goc); chi loi quy doi moi la ghi chu, khong lam hong tai khoan."""
     _wait_inside_muse(page, on_progress)
     own = _harvest_invite_code(page, email, on_progress)
     if not own:
-        raise RuntimeError("Chưa trích xuất được mã giới thiệu vào tool")
+        _emit(on_progress, step="invite", detail="Chưa lấy được mã giới thiệu, tài khoản vẫn lưu bình thường")
     if on_invite is not None:
         on_invite(own)
-    _emit(on_progress, step="invite", detail=f"Đã lưu mã giới thiệu {own} vào tool")
+    if own:
+        _emit(on_progress, step="invite", detail=f"Đã lưu mã giới thiệu {own} vào tool")
     if context is None:
         raise RuntimeError(f"Đã lưu mã giới thiệu {own} nhưng chưa lấy được cookie")
     try:
@@ -2560,9 +2869,10 @@ def create_muse_account(
             _fill_birthday(page, person, birthday)
             _resolve_after_birthday(page, on_progress)
             own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context, on_redeem)
-            if not own_invite:
-                raise RuntimeError("Chưa trích xuất được mã giới thiệu vào tool")
-            done_detail = f"Đã tạo {email}. Mã giới thiệu {own_invite} đã vào tool. Cookie đã lưu."
+            if own_invite:
+                done_detail = f"Đã tạo {email}. Mã giới thiệu {own_invite} đã vào tool. Cookie đã lưu."
+            else:
+                done_detail = f"Đã tạo {email}. Chưa lấy được mã giới thiệu. Cookie đã lưu."
             if keep_open:
                 done_detail += " Chrome được giữ."
             if invite_note:
