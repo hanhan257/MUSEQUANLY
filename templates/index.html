@@ -276,12 +276,7 @@
         <h1>Muse Manager</h1>
         <p>Kho tài khoản · cookie · OTP Lay2FA</p>
       </div>
-      <div class="side-label" id="khoSizeLabel">Kho · 50 TK / kho</div>
-      <div class="kho-list" id="khoList"></div>
       <div class="side-actions">
-        <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản</button>
-        <button type="button" class="btn-primary" id="btnOpenImport">Dán tài khoản</button>
-        <button type="button" class="btn-ghost" id="btnNewWarehouse">+ Kho trống</button>
         <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ</button>
@@ -301,6 +296,7 @@
           <button type="button" class="btn-all" id="btnBatchAll">Lấy cookie kho này · 5 luồng</button>
           <button type="button" class="btn-primary" id="btnRelogin" title="Đăng nhập lại cả kho, kể cả tài khoản đã có cookie">Đăng nhập lấy lại cookie</button>
           <button type="button" class="btn-error" id="btnStop">Dừng</button>
+          <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           <label class="check-inline"><input type="checkbox" id="skipExisting" checked /> Bỏ qua TK đã có cookie</label>
         </div>
       </div>
@@ -346,6 +342,7 @@
             <button type="button" class="btn-primary" id="btnCustomSignup">Tạo</button>
             <button type="button" class="btn-ghost" id="btnNewCreatedKho">Tạo kho mới</button>
             <button type="button" class="btn-error" id="btnStopSignup">Dừng</button>
+            <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           </div>
           <div class="toolbar" id="createdCookieTools">
             <button type="button" class="btn-all" id="btnCreatedCookies">Lấy cookie kho này · 5 luồng</button>
@@ -386,6 +383,7 @@
           <div class="toolbar">
             <button type="button" class="btn-primary" id="btnBuff">Buff tài khoản</button>
             <button type="button" class="btn-error" id="btnStopBuff">Dừng</button>
+            <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           </div>
         </div>
         <div class="signup-proxy">
@@ -431,7 +429,7 @@
           </div>
         </div>
         <div class="panel">
-          <div class="kho-list" id="accountKhoList"></div>
+          <div class="created-kho" id="accountKhoList"></div>
         </div>
       </div>
 
@@ -447,6 +445,7 @@
           <input id="cardExpiry" placeholder="MM/YY" autocomplete="off" style="width:6.2rem;" />
           <input id="cardCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="width:5.2rem;" />
           <button type="button" class="btn-primary" id="btnAddCard">Thêm thẻ</button>
+          <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
         </div>
         <div class="toolbar" id="cardFilterBar" style="margin-bottom:0.75rem;">
           <button type="button" class="btn-ghost btn-sm" data-card-filter="all">Tất cả</button>
@@ -525,33 +524,27 @@
       activeWarehouseKind = active?.kind || 'normal';
       const khoHtml = list.map(w => `
         <div class="kho-row">
-          <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''}" data-id="${w.id}">
+          <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''} ${w.kind !== 'error' && w.max && w.count >= w.max ? 'full' : ''}" data-id="${w.id}">
             <span>${escapeHtml(w.name)}</span>
             <span class="kho-count">${w.kind === 'error' ? w.count : w.count + '/' + w.max}</span>
           </button>
           ${w.kind === 'error' ? '' : `<button type="button" class="kho-del" data-delete-kho="${w.id}" title="Xóa ${escapeHtml(w.name)}">×</button>`}
         </div>`).join('') || '<div class="empty">Chưa có kho</div>';
-      const root = document.getElementById('khoList');
-      root.innerHTML = khoHtml;
       const accountRoot = document.getElementById('accountKhoList');
-      if (accountRoot) accountRoot.innerHTML = khoHtml;
-      [root, accountRoot].filter(Boolean).forEach(r => {
-        r.querySelectorAll('.kho-btn').forEach(btn => {
+      if (accountRoot) {
+        accountRoot.innerHTML = khoHtml;
+        accountRoot.querySelectorAll('.kho-btn').forEach(btn => {
           btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
         });
-        r.querySelectorAll('[data-delete-kho]').forEach(btn => {
+        accountRoot.querySelectorAll('[data-delete-kho]').forEach(btn => {
           btn.addEventListener('click', () => {
             const w = (warehouseSummary.warehouses || []).find(x => x.id === btn.dataset.deleteKho);
             deleteWarehouse(btn.dataset.deleteKho, w ? w.name : 'kho', w ? w.count : 0);
           });
         });
-      });
-      document.getElementById('khoSizeLabel').textContent = `Kho · ${warehouseSummary.max_per_warehouse} TK / kho`;
+      }
       const perWhInput = document.getElementById('accountPerWarehouse');
       if (perWhInput && document.activeElement !== perWhInput) perWhInput.value = warehouseSummary.max_per_warehouse;
-      if (viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff' || viewMode === 'account') {
-        root.querySelectorAll('.kho-btn').forEach(btn => btn.classList.remove('active'));
-      }
       document.getElementById('khoTitle').textContent = active ? active.name : 'Kho';
       document.getElementById('khoMeta').textContent = !active
         ? ''
@@ -575,8 +568,6 @@
       document.getElementById('btnCreatePassword').classList.toggle('active', viewMode === 'password');
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
-      document.getElementById('btnAccountView').classList.toggle('active', account);
-      if (signup || cards || buff || account) document.querySelectorAll('#khoList .kho-btn').forEach(btn => btn.classList.remove('active'));
     }
 
     async function setActiveWarehouse(id) {
@@ -1258,7 +1249,6 @@
       await loadEditor();
     }
 
-    document.getElementById('btnOpenImport').addEventListener('click', openDrawer);
     document.getElementById('drawerBack').addEventListener('click', closeDrawer);
     document.getElementById('btnSave').addEventListener('click', async () => {
       const text = document.getElementById('accountsEditor').value;
@@ -1295,15 +1285,10 @@
     });
     document.getElementById('btnSplitReplace').addEventListener('click', () => importSplit('replace'));
     document.getElementById('btnSplitAppend').addEventListener('click', () => importSplit('append'));
-    document.getElementById('btnNewWarehouse').addEventListener('click', async () => {
-      await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      await refreshAll();
-      toast('Đã tạo kho mới');
-    });
-    document.getElementById('btnAccountView').addEventListener('click', async () => {
+    document.querySelectorAll('.btnGoAccount').forEach(btn => btn.addEventListener('click', async () => {
       viewMode = 'account';
       await refreshAll();
-    });
+    }));
     document.getElementById('btnOpenImportAccount').addEventListener('click', openDrawer);
     document.getElementById('btnNewWarehouseAccount').addEventListener('click', async () => {
       await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
