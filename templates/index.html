@@ -343,6 +343,13 @@
           <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
           <input type="number" id="signupMaxWorkers" value="5" min="1" max="20" style="width:4.2rem;" />
         </div>
+        <div class="signup-proxy">
+          <label for="buffCodes">Buff tài khoản — dán mỗi mã mời một dòng vào Kho code. Tool tạo số tài khoản ở ô Số TK / mã, mọi tài khoản đều nhập đúng mã đó (không nối chuỗi như tạo thường), lấy cookie và lưu vào kho riêng tên "Kho - mã code". Tối đa 30 tài khoản cho 1 mã (giới hạn của Muse).</label>
+          <textarea id="buffCodes" placeholder="RG93QP&#10;ABC123" style="min-height:4rem;"></textarea>
+          <label for="buffPerCode" style="margin-top:0.5rem;">Số TK / mã — mặc định 30, sửa được (tối đa 30).</label>
+          <input type="number" id="buffPerCode" value="30" min="1" max="30" style="width:4.2rem;" />
+          <button type="button" class="btn-primary" id="btnBuff" style="margin-top:0.5rem;">Buff tài khoản</button>
+        </div>
         <div class="panel">
           <div id="signupStatus" class="login-status"></div>
           <div id="signupTable"></div>
@@ -1313,10 +1320,12 @@
       return viewMode === 'password' ? 'password' : 'plain';
     }
     function setSignupButtons(disabled) {
-      document.querySelectorAll('[data-signup-count], #btnCustomSignup').forEach(btn => { btn.disabled = disabled; });
+      document.querySelectorAll('[data-signup-count], #btnCustomSignup, #btnBuff').forEach(btn => { btn.disabled = disabled; });
       document.getElementById('signupCustomCount').disabled = disabled;
       document.getElementById('signupInviteCode').disabled = disabled;
       document.getElementById('signupPerProxy').disabled = disabled;
+      document.getElementById('buffCodes').disabled = disabled;
+      document.getElementById('buffPerCode').disabled = disabled;
     }
     async function startSignup(count, mode) {
       const proxies = signupProxyLines();
@@ -1375,6 +1384,59 @@
         }
       }, 1500);
     }
+    async function startBuff() {
+      const mode = signupMode();
+      const codes = document.getElementById('buffCodes').value.split(/\r?\n/).map(line => line.trim().toUpperCase()).filter(Boolean);
+      const bad = codes.find(code => !/^[A-Z0-9]{4,16}$/.test(code));
+      if (!codes.length) { setSignupStatus('Chưa nhập mã mời. Dán mỗi mã một dòng vào Kho code.', 'error'); return; }
+      if (bad) { setSignupStatus(`Mã mời không hợp lệ: ${bad} (chỉ chữ và số, 4–16 ký tự).`, 'error'); return; }
+      if (codes.length > 20) { setSignupStatus('Tối đa 20 mã một lần.', 'error'); return; }
+      const perCode = Math.max(1, Math.min(30, parseInt(document.getElementById('buffPerCode').value || '30', 10) || 30));
+      const proxies = signupProxyLines();
+      const perProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('signupPerProxy').value || '5', 10) || 5));
+      const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('signupMaxWorkers').value || '5', 10) || 5));
+      if (proxies.length > 200) {
+        setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
+        return;
+      }
+      const used = proxies.slice(0, Math.ceil(perCode / perProxy));
+      setSignupButtons(true);
+      if (loginPollTimer) clearInterval(loginPollTimer);
+      setSignupStatus(`Buff ${codes.length} mã · ${perCode} TK/mã — mỗi tài khoản đều nhập đúng mã của nó`, 'running');
+      const res = await fetch('/api/buff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes: codes.join('\n'), per_code: perCode, mode, proxies: used.join('\n'), per_proxy: perProxy, max_workers: maxWorkers }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không buff được', 'error');
+        setSignupButtons(false);
+        return;
+      }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') {
+          setSignupStatus(line || 'Đang buff tài khoản…', 'running');
+          await loadCreated();
+        } else if (st.status === 'done') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(st.detail || 'Buff xong', 'done');
+          setSignupButtons(false);
+          await loadCreated();
+          toast(st.detail || 'Buff xong');
+        } else if (st.status === 'error' || st.status === 'unknown') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setSignupStatus(st.error || st.detail || 'Lỗi buff tài khoản', 'error');
+          setSignupButtons(false);
+          await loadCreated();
+        }
+      }, 1500);
+    }
+    document.getElementById('btnBuff').addEventListener('click', startBuff);
     async function createCreatedWarehouse() {
       const kind = viewMode === 'password' ? 'password' : 'plain';
       const res = await fetch('/api/created/warehouses', {

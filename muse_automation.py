@@ -3017,6 +3017,7 @@ def _chain_invites(
     on_invite: Callable[[str | None], None] | None,
     context=None,
     on_redeem: Callable[[str | None], None] | None = None,
+    allow_redeem_fallback: bool = True,
 ) -> tuple[str, str]:
     """Lay ma gioi thieu cua tai khoan nay, luu cookie, roi quy doi ma cua tai khoan truoc.
     Khong lay duoc ma rieng thi tai khoan van duoc luu (ma trong, chuoi roi ve ma gan nhat / ma goc); chi loi quy doi moi la ghi chu, khong lam hong tai khoan."""
@@ -3051,7 +3052,8 @@ def _chain_invites(
                 raise
             last_error = exc
             # Mã bị Muse từ chối: thử lại 1 lần bằng mã trong kho (khác mã vừa thử và khác mã riêng).
-            if _should_retry_redeem(exc):
+            # Buff thì không thử mã khác: tài khoản chỉ được nhập đúng mã buff, không thì ghi chú lỗi.
+            if allow_redeem_fallback and _should_retry_redeem(exc):
                 fallback = warehouse_invite_code(email, exclude_codes=(prior, own))
                 if fallback:
                     try:
@@ -3128,6 +3130,7 @@ def create_muse_account(
     on_invite: Callable[[str | None], None] | None = None,
     on_redeem: Callable[[str | None], None] | None = None,
     prepare_mail: Callable[[], tuple[str, str, str | None]] | None = None,
+    allow_redeem_fallback: bool = True,
 ) -> LoginProgress:
     """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
     from tempmail_plus_client import TempMailPlusError, wait_for_code
@@ -3260,7 +3263,7 @@ def create_muse_account(
             _emit(on_progress, step="birthday", detail=f"Điền ngày sinh {birthday['label']}")
             _fill_birthday(page, person, birthday)
             _resolve_after_birthday(page, on_progress)
-            own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context, on_redeem)
+            own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context, on_redeem, allow_redeem_fallback)
             if own_invite:
                 done_detail = f"Đã tạo {email}. Mã giới thiệu {own_invite} đã vào tool. Cookie đã lưu."
             else:

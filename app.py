@@ -74,10 +74,12 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v76"
+APP_BUILD = "signup-v77"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
+BUFF_MAX_PER_CODE = 30  # 1 mã mời tối đa 30 lượt dùng (giới hạn của Muse)
+BUFF_MAX_CODES = 20
 BATCH_PARALLEL = 5
 PROXY_PARALLEL = 5
 MAX_WORKERS = 20
@@ -364,6 +366,11 @@ def api_open_muse():
 def _set_job(job_id: str, data: dict) -> None:
     with _jobs_lock:
         _login_jobs[job_id] = {**_login_jobs.get(job_id, {}), **data}
+
+
+def _get_job(job_id: str) -> dict:
+    with _jobs_lock:
+        return dict(_login_jobs.get(job_id) or {})
 
 
 def _run_login_job(
@@ -784,9 +791,10 @@ def api_batch_tokens():
     return jsonify({"ok": True, "job_id": job_id, "total": len(emails), "workers": BATCH_PARALLEL})
 
 
-def _redeem_targets(accounts: list[dict], kind: str) -> list[dict]:
+def _redeem_targets(accounts: list[dict], kind: str, buff_code: str = "") -> list[dict]:
     """Tài khoản chưa có Mã đã nhập trong kho: con sau nhập mã của con trước liền kề,
-    con trước không có mã thì lấy mã trong kho. Con chưa có cookie thì bỏ qua."""
+    con trước không có mã thì lấy mã trong kho. Con chưa có cookie thì bỏ qua.
+    Kho buff ('Kho - MÃ'): mọi tài khoản đều nhập đúng mã buff trong tên kho."""
     targets: list[dict] = []
     for pos, acc in enumerate(accounts):
         email = (acc.get("email") or "").strip()
@@ -798,7 +806,9 @@ def _redeem_targets(accounts: list[dict], kind: str) -> list[dict]:
             targets.append({"email": email, "status": "skipped", "detail": "Chưa có cookie"})
             continue
         code = ""
-        if pos > 0:
+        if buff_code:
+            code = buff_code
+        elif pos > 0:
             code = (accounts[pos - 1].get("invite_code") or "").strip().upper()
         if not code:
             code = warehouse_invite_code(email, kind=kind)
@@ -951,7 +961,9 @@ def api_batch_redeem():
     if not wh_id:
         return jsonify({"ok": False, "error": "Chưa chọn kho."}), 400
     board = list_created_accounts(wh_id, kind)
-    targets = _redeem_targets(board.get("accounts", []), kind)
+    wh = next((w for w in board.get("warehouses", []) if w.get("id") == wh_id), None)
+    buff_code = _buff_code_from_name((wh or {}).get("name") or "")
+    targets = _redeem_targets(board.get("accounts", []), kind, buff_code=buff_code)
     pending = [t for t in targets if t.get("status") == "pending"]
     if not pending:
         return jsonify({"ok": False, "error": "Không có tài khoản nào cần chạy lại mã mời (đã nhập đủ hoặc chưa có cookie)."}), 400
@@ -1067,6 +1079,7 @@ def _signup_one(
     proxy: str = "",
     index: int = 0,
     chain: _InviteChain | None = None,
+    fixed_code: str = "",
 ) -> bool:
     box = {"email": "", "published": False}
 
@@ -1094,6 +1107,7 @@ def _signup_one(
             box=box,
             on_invite=on_invite,
             on_redeem=on_redeem,
+            fixed_code=fixed_code,
         )
     except Exception:
         return False
@@ -1115,6 +1129,7 @@ def _signup_one_run(
     box: dict,
     on_invite,
     on_redeem=None,
+    fixed_code: str = "",
 ) -> bool:
     from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
 
@@ -1213,6 +1228,9 @@ def _signup_one_run(
         return email, token, password if mode == "password" else None
 
     def take_prior() -> str | None:
+        # Buff: mọi tài khoản đều nhập cùng 1 mã buff, không nối chuỗi, không lấy mã trong kho.
+        if fixed_code:
+            return fixed_code
         if chain is not None:
             prior = chain.wait_prior(index)
             if prior:
@@ -1233,6 +1251,7 @@ def _signup_one_run(
             on_invite=on_invite,
             on_redeem=on_redeem,
             prepare_mail=prepare_mail,
+            allow_redeem_fallback=not fixed_code,
         )
         ok = result.step == "done"
         error = result.error or ""
@@ -1277,6 +1296,7 @@ def _run_signup_lane(
     proxy: str,
     indices: list[int],
     chain: _InviteChain | None,
+    fixed_code: str = "",
 ) -> None:
     """Một proxy chạy lần lượt từng tài khoản. Tài khoản lỗi thì báo lỗi rồi
     dừng làn này, các tài khoản còn lại trên proxy đó bỏ qua, làn khác vẫn chạy."""
@@ -1292,6 +1312,7 @@ def _run_signup_lane(
             proxy=proxy,
             index=index,
             chain=chain,
+            fixed_code=fixed_code,
         )
         if ok:
             continue
@@ -1335,8 +1356,10 @@ def _run_signup_lane(
         return
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL) -> None:
-    clear_stop()
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True) -> None:
+    if reset_stop:
+        clear_stop()
+    fixed_code = (fixed_code or "").strip().upper()
     proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
     seed = (seed or "").strip().upper()
     per_proxy = max(1, min(50, int(per_proxy or 5)))
@@ -1352,7 +1375,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     else:
         workers = _signup_workers(count, 0, max_workers)
         via = ""
-    seed_note = f" · mã mời {seed} cho TK đầu" if seed else ""
+    seed_note = f" · buff mã {fixed_code} cho cả {count} TK" if fixed_code else (f" · mã mời {seed} cho TK đầu" if seed else "")
     _set_job(
         job_id,
         {
@@ -1365,7 +1388,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             "fail_count": 0,
         },
     )
-    chain = _InviteChain(count, seed or latest_invite_code())
+    chain = None if fixed_code else _InviteChain(count, seed or latest_invite_code())
     if proxies:
         lanes = [
             (proxy, list(range(j * per_proxy, min((j + 1) * per_proxy, count))))
@@ -1384,6 +1407,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                         proxy=lane[0],
                         indices=lane[1],
                         chain=chain,
+                        fixed_code=fixed_code,
                     ),
                     lanes,
                 )
@@ -1401,14 +1425,18 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                         proxy="",
                         index=index,
                         chain=chain,
+                        fixed_code=fixed_code,
                     ),
                     range(count),
                 )
             )
-    try:
-        set_invite_chain_code(chain.tail())
-    except Exception:
-        pass
+    if chain is not None:
+        try:
+            set_invite_chain_code(chain.tail())
+        except Exception:
+            pass
+    if not finalize:
+        return
     stopped = stop_requested()
     status = "error" if state["ok"] == 0 else "done"
     summary = (
@@ -1429,6 +1457,84 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             "ok_count": state["ok"],
             "fail_count": state["fail"],
             "failures": list(state["failures"]),
+        },
+    )
+
+
+def _buff_code_from_name(name: str) -> str:
+    """Kho buff đặt tên 'Kho - MÃ': lấy lại mã từ tên kho để chạy lại mã mời cho đúng mã."""
+    name = (name or "").strip()
+    if not name.startswith("Kho - "):
+        return ""
+    code = name[6:].strip().upper()
+    return code if re.fullmatch(r"[A-Z0-9]{4,16}", code) else ""
+
+
+def _run_buff_batch(job_id: str, codes: list[str], per_code: int, mode: str = "password", proxies: list[str] | None = None, per_proxy: int = 5, max_workers: int = BATCH_PARALLEL) -> None:
+    """Buff tài khoản: mỗi mã tạo per_code tài khoản mới, mọi tài khoản đều nhập đúng mã đó
+    (không nối chuỗi như tạo thường), lấy cookie và lưu vào kho riêng tên 'Kho - MÃ'.
+    Chạy lần lượt từng mã."""
+    clear_stop()
+    kind = "password" if mode == "password" else "plain"
+    results: list[tuple[str, str, int, int]] = []
+    total_ok = 0
+    total_fail = 0
+    total_done = 0
+    for code in codes:
+        if stop_requested():
+            break
+        # Kho buff riêng cho mã này: có rồi thì dùng lại (buff thêm), chưa có thì tạo mới.
+        board = list_created_accounts(None, kind)
+        existing = next((w for w in board.get("warehouses", []) if (w.get("name") or "") == f"Kho - {code}"), None)
+        if existing:
+            set_active_created_warehouse(existing["id"])
+            wh_name = existing["name"]
+        else:
+            wh_name = create_created_warehouse(kind, name=f"Kho - {code}").get("name") or f"Kho - {code}"
+        _run_signup_batch(
+            job_id,
+            count=per_code,
+            mode=mode,
+            proxies=proxies,
+            per_proxy=per_proxy,
+            max_workers=max_workers,
+            fixed_code=code,
+            reset_stop=False,
+            finalize=False,
+        )
+        job = _get_job(job_id)
+        ok = int(job.get("ok_count") or 0)
+        fail = int(job.get("fail_count") or 0)
+        results.append((code, wh_name, ok, fail))
+        total_ok += ok
+        total_fail += fail
+        total_done += ok + fail
+        _set_job(
+            job_id,
+            {
+                "status": "running",
+                "step": "batch",
+                "detail": f"Buff {code}: {ok}/{ok + fail} được · tổng {total_ok} TK · {total_fail} lỗi",
+                "total": len(codes) * per_code,
+                "done_count": total_done,
+                "ok_count": total_ok,
+                "fail_count": total_fail,
+            },
+        )
+    stopped = stop_requested()
+    summary = ("Đã dừng · " if stopped else "") + f"Buff xong {total_ok} tài khoản · {total_fail} lỗi."
+    for code, wh_name, ok, fail in results:
+        summary += f"\n{wh_name}: {ok}/{ok + fail} được"
+    _set_job(
+        job_id,
+        {
+            "status": "done" if total_ok else "error",
+            "step": "done",
+            "detail": summary,
+            "total": len(codes) * per_code,
+            "done_count": total_done,
+            "ok_count": total_ok,
+            "fail_count": total_fail,
         },
     )
 
@@ -1623,6 +1729,56 @@ def api_signup():
     thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy, "max_workers": max_workers})
+
+
+@app.post("/api/buff")
+def api_buff():
+    body = request.get_json(force=True, silent=True) or {}
+    mode = "plain" if body.get("mode") == "plain" else "password"
+    codes: list[str] = []
+    for line in str(body.get("codes") or "").splitlines():
+        code = (line or "").strip().upper()
+        if not code:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4,16}", code):
+            return jsonify({"ok": False, "error": f"Mã mời không hợp lệ: {code} (chỉ chữ và số, 4–16 ký tự)."}), 400
+        if code not in codes:
+            codes.append(code)
+    if not codes:
+        return jsonify({"ok": False, "error": "Chưa nhập mã mời. Dán mỗi mã một dòng vào Kho code."}), 400
+    if len(codes) > BUFF_MAX_CODES:
+        return jsonify({"ok": False, "error": f"Tối đa {BUFF_MAX_CODES} mã một lần."}), 400
+    try:
+        per_code = int(body.get("per_code") or BUFF_MAX_PER_CODE)
+    except (TypeError, ValueError):
+        per_code = BUFF_MAX_PER_CODE
+    per_code = max(1, min(BUFF_MAX_PER_CODE, per_code))
+    proxies = [normalize_proxy_line(line) for line in (body.get("proxies") or "").splitlines() if normalize_proxy_line(line)]
+    try:
+        per_proxy = int(body.get("per_proxy") or 5)
+    except (TypeError, ValueError):
+        per_proxy = 5
+    per_proxy = max(1, min(50, per_proxy))
+    try:
+        max_workers = int(body.get("max_workers") or BATCH_PARALLEL)
+    except (TypeError, ValueError):
+        max_workers = BATCH_PARALLEL
+    max_workers = max(1, min(MAX_WORKERS, max_workers))
+    per_code_actual = min(per_code, len(proxies) * per_proxy) if proxies else per_code
+    total = len(codes) * per_code_actual
+    job_id = uuid.uuid4().hex[:12]
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": f"Buff {len(codes)} mã · {per_code_actual} TK/mã · tối đa {total} tài khoản",
+            "total": total,
+        },
+    )
+    thread = threading.Thread(target=_run_buff_batch, args=(job_id, codes, per_code_actual, mode, proxies, per_proxy, max_workers), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "total": total, "codes": codes, "per_code": per_code_actual})
 
 
 @app.post("/api/login")
