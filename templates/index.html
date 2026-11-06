@@ -98,7 +98,31 @@
     .signup-proxy { margin-bottom: 0.75rem; }
     .signup-proxy label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
     .signup-proxy textarea { width: 100%; min-height: 4.6rem; resize: vertical; }
-    .created-kho .kho-btn { width: auto; }
+    .created-kho .kho-btn {
+      width: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.5rem 0.85rem;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    }
+    .created-kho .kho-btn:hover { background: #26313f; border-color: #3a475c; }
+    .created-kho .kho-btn.active {
+      background: linear-gradient(135deg, #0b5fff, #0866ff);
+      border-color: #4d94ff;
+      color: #fff;
+      box-shadow: 0 0 0 1px rgba(77, 148, 255, 0.45), 0 4px 14px rgba(8, 102, 255, 0.35);
+    }
+    .created-kho .kho-count {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 999px;
+      padding: 0.1rem 0.45rem;
+    }
+    .created-kho .kho-btn.active .kho-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
+    .created-kho .kho-btn.full .kho-count { background: rgba(255, 176, 32, 0.22); color: #ffcf6b; }
     .build { font-size: 0.68rem; color: var(--muted); padding: 0 0.35rem; }
     .main { padding: 1.1rem 1.25rem 2rem; min-width: 0; }
     .top {
@@ -998,7 +1022,7 @@
       const active = (createdBoard.warehouses || []).find(w => w.active);
       khoRoot.innerHTML = (createdBoard.warehouses || []).map(w => `
         <div class="kho-row">
-          <button type="button" class="kho-btn ${w.active ? 'active' : ''}" data-created-kho="${w.id}">
+          <button type="button" class="kho-btn ${w.active ? 'active' : ''} ${w.count >= w.max ? 'full' : ''}" data-created-kho="${w.id}">
             <span>${escapeHtml(w.name)}</span>
             <span class="kho-count">${w.count}/${w.max}</span>
           </button>
