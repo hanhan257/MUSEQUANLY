@@ -2334,6 +2334,7 @@ def _chain_invites(
     take_prior: Callable[[], str | None] | None,
     on_invite: Callable[[str | None], None] | None,
     context=None,
+    on_redeem: Callable[[str | None], None] | None = None,
 ) -> tuple[str, str]:
     """Thành công khi mã giới thiệu đã vào tool. Sau đó mới lưu cookie."""
     _wait_inside_muse(page, on_progress)
@@ -2364,6 +2365,8 @@ def _chain_invites(
             note = f"Mã {own} và cookie đã lưu. Chưa quy đổi được mã trước: {exc}"
             _emit(on_progress, step="invite", detail=note)
             return own, note
+        if on_redeem is not None:
+            on_redeem(prior)
     elif not prior:
         _emit(on_progress, step="invite", detail="Tài khoản đầu chuỗi, không nhập mã mời")
     return own, ""
@@ -2422,6 +2425,7 @@ def create_muse_account(
     on_progress: ProgressCallback | None = None,
     take_prior: Callable[[], str | None] | None = None,
     on_invite: Callable[[str | None], None] | None = None,
+    on_redeem: Callable[[str | None], None] | None = None,
     prepare_mail: Callable[[], tuple[str, str, str | None]] | None = None,
 ) -> LoginProgress:
     """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
@@ -2555,7 +2559,7 @@ def create_muse_account(
             _emit(on_progress, step="birthday", detail=f"Điền ngày sinh {birthday['label']}")
             _fill_birthday(page, person, birthday)
             _resolve_after_birthday(page, on_progress)
-            own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context)
+            own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context, on_redeem)
             if not own_invite:
                 raise RuntimeError("Chưa trích xuất được mã giới thiệu vào tool")
             done_detail = f"Đã tạo {email}. Mã giới thiệu {own_invite} đã vào tool. Cookie đã lưu."

@@ -942,7 +942,7 @@
         <table>
           <thead><tr>
             <th class="check"><input type="checkbox" id="createdCheckAll" title="Tích tất cả cookie trong kho này" /></th>
-            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu hộp thư</th><th>Mã mời</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
+            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu hộp thư</th><th>Mã mời</th><th>Mã đã nhập</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
           </tr></thead>
           <tbody>
             ${createdAccounts.map((a, i) => {
@@ -956,6 +956,7 @@
               <td class="email">${escapeHtml(a.email)}</td>
               <td class="hint">${escapeHtml(a.password || '')}</td>
               <td>${escapeHtml(a.invite_code || '')}</td>
+              <td>${escapeHtml(a.redeemed_invite_code || '')}</td>
               <td class="cookie-cell">
                 <span class="badge ${a.has_cookie ? 'ok' : 'no'}">${a.has_cookie ? 'Có cookie' : 'Chưa có'}</span>
                 <div class="cookie-snip" title="${escapeHtml(rawCookie)}">${snip}</div>

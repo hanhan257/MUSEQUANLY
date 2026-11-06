@@ -482,6 +482,7 @@ def _created_account_view(acc: dict[str, Any]) -> dict[str, Any]:
         "password": acc.get("mailtm_password") or "",
         "proxy": acc.get("proxy") or "",
         "invite_code": acc.get("invite_code") or "",
+        "redeemed_invite_code": acc.get("redeemed_invite_code") or "",
         "has_cookie": bool(header),
         "cookie_header": header,
         "cookie_saved_at": rec.get("saved_at") or "",
@@ -644,6 +645,21 @@ def set_created_invite_code(email: str, code: str) -> None:
         for acc in _created_rows(data):
             if (acc.get("email") or "").strip().lower() == key:
                 acc["invite_code"] = code
+                _save(data)
+                return
+
+
+def set_redeemed_invite_code(email: str, code: str) -> None:
+    """Ghi mã lời mời tài khoản này đã nhập (mã của tài khoản trước nó)."""
+    code = (code or "").strip().upper()
+    if not code:
+        return
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        key = email.strip().lower()
+        for acc in _created_rows(data):
+            if (acc.get("email") or "").strip().lower() == key:
+                acc["redeemed_invite_code"] = code
                 _save(data)
                 return
 

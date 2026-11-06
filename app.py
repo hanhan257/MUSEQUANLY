@@ -60,12 +60,13 @@ from warehouse_store import (
     set_active_warehouse,
     set_created_invite_code,
     set_invite_chain_code,
+    set_redeemed_invite_code,
     warehouse_emails,
 )
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v67"
+APP_BUILD = "signup-v68"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -709,6 +710,10 @@ def _signup_one(
         if code and box["email"]:
             set_created_invite_code(box["email"], code)
 
+    def on_redeem(code: str | None) -> None:
+        if code and box["email"]:
+            set_redeemed_invite_code(box["email"], code)
+
     try:
         return _signup_one_run(
             job_id,
@@ -721,6 +726,7 @@ def _signup_one(
             chain=chain,
             box=box,
             on_invite=on_invite,
+            on_redeem=on_redeem,
         )
     except Exception:
         return False
@@ -741,6 +747,7 @@ def _signup_one_run(
     chain: _InviteChain | None,
     box: dict,
     on_invite,
+    on_redeem=None,
 ) -> bool:
     from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
 
@@ -847,6 +854,7 @@ def _signup_one_run(
             on_progress=on_progress,
             take_prior=(lambda: chain.wait_prior(index)) if chain is not None else None,
             on_invite=on_invite,
+            on_redeem=on_redeem,
             prepare_mail=prepare_mail,
         )
         ok = result.step == "done"
