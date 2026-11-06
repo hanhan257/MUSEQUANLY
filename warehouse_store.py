@@ -15,7 +15,30 @@ from lay2fa_client import parse_account_line
 WAREHOUSES_FILE = DATA_DIR / "warehouses.json"
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 ACCOUNTS_PER_WAREHOUSE = 50
-CREATED_PER_WAREHOUSE = 50
+MIN_ACCOUNTS_PER_WAREHOUSE = 1
+MAX_ACCOUNTS_PER_WAREHOUSE = 1000
+
+
+def get_accounts_per_warehouse() -> int:
+    """Số tài khoản tối đa mỗi kho — người dùng chỉnh được, mặc định 50."""
+    data = ensure_initialized()
+    try:
+        value = int(data.get("accounts_per_warehouse"))
+    except (TypeError, ValueError):
+        value = ACCOUNTS_PER_WAREHOUSE
+    return max(MIN_ACCOUNTS_PER_WAREHOUSE, min(MAX_ACCOUNTS_PER_WAREHOUSE, value))
+
+
+def set_accounts_per_warehouse(value: int) -> int:
+    data = ensure_initialized()
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = ACCOUNTS_PER_WAREHOUSE
+    value = max(MIN_ACCOUNTS_PER_WAREHOUSE, min(MAX_ACCOUNTS_PER_WAREHOUSE, value))
+    data["accounts_per_warehouse"] = value
+    _save(data)
+    return value
 _CREATED_LOCK = threading.Lock()
 
 
@@ -112,8 +135,8 @@ def _accounts_to_warehouses(accounts: list[dict[str, str]], start_name: int = 1)
         out.append({"id": _new_id(), "name": "Kho 1", "accounts": []})
         return out
     chunk_idx = 0
-    for i in range(0, len(accounts), ACCOUNTS_PER_WAREHOUSE):
-        chunk = accounts[i : i + ACCOUNTS_PER_WAREHOUSE]
+    for i in range(0, len(accounts), get_accounts_per_warehouse()):
+        chunk = accounts[i : i + get_accounts_per_warehouse()]
         chunk_idx += 1
         out.append(
             {
@@ -250,13 +273,13 @@ def list_warehouses_summary() -> dict[str, Any]:
                 "name": wh.get("name", "Kho"),
                 "kind": "error" if is_error else "normal",
                 "count": len(acc),
-                "max": None if is_error else ACCOUNTS_PER_WAREHOUSE,
+                "max": None if is_error else get_accounts_per_warehouse(),
                 "active": wh["id"] == data.get("active_warehouse_id"),
             }
         )
     return {
         "active_warehouse_id": data.get("active_warehouse_id"),
-        "max_per_warehouse": ACCOUNTS_PER_WAREHOUSE,
+        "max_per_warehouse": get_accounts_per_warehouse(),
         "warehouses": items,
     }
 
@@ -293,8 +316,8 @@ def save_active_accounts(rows: list[dict[str, str]]) -> None:
     wh = get_warehouse(wh_id, data)
     if not wh:
         return
-    if not _is_error_warehouse(wh) and len(rows) > ACCOUNTS_PER_WAREHOUSE:
-        raise ValueError(f"Mỗi kho tối đa {ACCOUNTS_PER_WAREHOUSE} tài khoản.")
+    if not _is_error_warehouse(wh) and len(rows) > get_accounts_per_warehouse():
+        raise ValueError(f"Mỗi kho tối đa {get_accounts_per_warehouse()} tài khoản.")
     known = _mailtm_passwords(data)
     wh["accounts"] = [_keep_mailtm_password(row, known) for row in rows]
     _save(data)
@@ -349,7 +372,7 @@ def import_split_append(raw: str, proxies_raw: str = "") -> dict[str, Any]:
             if _is_error_warehouse(wh):
                 continue
             accs = wh.setdefault("accounts", [])
-            if len(accs) < ACCOUNTS_PER_WAREHOUSE:
+            if len(accs) < get_accounts_per_warehouse():
                 accs.append(acc)
                 placed = True
                 break
@@ -431,10 +454,10 @@ def _append_created_row(data: dict[str, Any], row: dict[str, Any], kind: str = "
     same = [wh for wh in warehouses if wh.get("kind") == kind]
     active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
     active = next((wh for wh in same if wh.get("id") == data.get(active_key)), None)
-    if active is not None and len(active.get("accounts") or []) < CREATED_PER_WAREHOUSE:
+    if active is not None and len(active.get("accounts") or []) < get_accounts_per_warehouse():
         target = active
     else:
-        target = next((wh for wh in same if len(wh.get("accounts") or []) < CREATED_PER_WAREHOUSE), None)
+        target = next((wh for wh in same if len(wh.get("accounts") or []) < get_accounts_per_warehouse()), None)
     if target is None:
         target = {"id": _new_id(), "name": f"Kho {len(same) + 1}", "kind": kind, "accounts": []}
         warehouses.append(target)
@@ -565,14 +588,14 @@ def _split_created_by_kind(data: dict[str, Any]) -> bool:
             if not rows:
                 return [{"id": _new_id(), "name": "Kho 1", "kind": kind, "accounts": []}]
             out = []
-            for index in range(0, len(rows), CREATED_PER_WAREHOUSE):
-                number = index // CREATED_PER_WAREHOUSE + 1
+            for index in range(0, len(rows), get_accounts_per_warehouse()):
+                number = index // get_accounts_per_warehouse() + 1
                 out.append(
                     {
                         "id": _new_id(),
                         "name": f"Kho {number}",
                         "kind": kind,
-                        "accounts": rows[index : index + CREATED_PER_WAREHOUSE],
+                        "accounts": rows[index : index + get_accounts_per_warehouse()],
                     }
                 )
             return out
@@ -606,7 +629,7 @@ def list_created_accounts(warehouse_id: str | None = None, kind: str = "plain") 
             "id": wh.get("id"),
             "name": wh.get("name") or "Kho",
             "count": len(wh.get("accounts") or []),
-            "max": CREATED_PER_WAREHOUSE,
+            "max": get_accounts_per_warehouse(),
             "kind": kind,
             "active": current is not None and wh.get("id") == current.get("id"),
         }
@@ -832,12 +855,12 @@ def restore_account_from_error(email: str) -> dict[str, Any]:
         raise ValueError("Tài khoản không nằm trong kho lỗi.")
     error["accounts"] = [a for a in error.get("accounts") or [] if a.get("email", "").lower() != key]
     target = get_warehouse(acc.get("from_warehouse_id"), data)
-    if not target or _is_error_warehouse(target) or len(target.get("accounts") or []) >= ACCOUNTS_PER_WAREHOUSE:
+    if not target or _is_error_warehouse(target) or len(target.get("accounts") or []) >= get_accounts_per_warehouse():
         target = next(
             (
                 wh
                 for wh in _regular_warehouses(data)
-                if len(wh.get("accounts") or []) < ACCOUNTS_PER_WAREHOUSE
+                if len(wh.get("accounts") or []) < get_accounts_per_warehouse()
             ),
             None,
         )

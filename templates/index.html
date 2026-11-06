@@ -276,9 +276,10 @@
         <h1>Muse Manager</h1>
         <p>Kho tài khoản · cookie · OTP Lay2FA</p>
       </div>
-      <div class="side-label">Kho · 50 TK / kho</div>
+      <div class="side-label" id="khoSizeLabel">Kho · 50 TK / kho</div>
       <div class="kho-list" id="khoList"></div>
       <div class="side-actions">
+        <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản</button>
         <button type="button" class="btn-primary" id="btnOpenImport">Dán tài khoản</button>
         <button type="button" class="btn-ghost" id="btnNewWarehouse">+ Kho trống</button>
         <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
@@ -409,6 +410,29 @@
         </div>
       </div>
 
+      <div id="accountView" hidden>
+        <div class="top">
+          <div>
+            <h2>Quản lý tài khoản</h2>
+            <div class="meta">Tạo kho, dán tài khoản, xóa kho — gom chung ở đây. Một kho mặc định 50 tài khoản, bạn đổi được thành 100, 1000 tùy ý. Kho đã có sẵn giữ nguyên số tài khoản, chỉ áp dụng cho kho mới và tài khoản thêm mới.</div>
+          </div>
+          <div class="toolbar">
+            <button type="button" class="btn-primary" id="btnOpenImportAccount">Dán tài khoản</button>
+            <button type="button" class="btn-ghost" id="btnNewWarehouseAccount">+ Kho trống</button>
+          </div>
+        </div>
+        <div class="signup-proxy">
+          <label for="accountPerWarehouse">Số TK / kho — mặc định 50, sửa được (1–1000).</label>
+          <div class="toolbar">
+            <input type="number" id="accountPerWarehouse" value="50" min="1" max="1000" style="width:5.5rem;" />
+            <button type="button" class="btn-primary" id="btnSavePerWarehouse">Lưu</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="kho-list" id="accountKhoList"></div>
+        </div>
+      </div>
+
       <div id="cardView" hidden>
         <div class="top">
           <div>
@@ -437,7 +461,7 @@
   <div class="drawer-back" id="drawerBack"></div>
   <aside class="drawer" id="drawer">
     <h3>Nhập tài khoản</h3>
-    <p class="hint">Hỗ trợ cả 2 định dạng: <code>email|lay2fa.xyz/email|MÃ 2FA</code> và <code>email|mật khẩu|2FA hoặc ghi chú</code>. Nếu tài khoản đăng nhập bằng mật khẩu, nhập email, chọn use password instead, rồi điền mật khẩu. Dán 100 dòng sẽ thành Kho 1 (50) + Kho 2 (50).</p>
+    <p class="hint">Hỗ trợ cả 2 định dạng: <code>email|lay2fa.xyz/email|MÃ 2FA</code> và <code>email|mật khẩu|2FA hoặc ghi chú</code>. Nếu tài khoản đăng nhập bằng mật khẩu, nhập email, chọn use password instead, rồi điền mật khẩu. Dán nhiều dòng sẽ tự chia vào các kho, mỗi kho tối đa số TK/kho đang cài trong Quản lý tài khoản.</p>
     <section>
       <div class="side-label">Dán nhiều kho</div>
       <textarea id="bulkImportEditor" placeholder="email|lay2fa.xyz/email|OP73 7X6Q POFO JANG&#10;email|MetaPass@123|ABCDEF"></textarea>
@@ -497,8 +521,7 @@
       const list = warehouseSummary.warehouses || [];
       const active = list.find(w => w.id === activeWarehouseId);
       activeWarehouseKind = active?.kind || 'normal';
-      const root = document.getElementById('khoList');
-      root.innerHTML = list.map(w => `
+      const khoHtml = list.map(w => `
         <div class="kho-row">
           <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''}" data-id="${w.id}">
             <span>${escapeHtml(w.name)}</span>
@@ -506,16 +529,25 @@
           </button>
           ${w.kind === 'error' ? '' : `<button type="button" class="kho-del" data-delete-kho="${w.id}" title="Xóa ${escapeHtml(w.name)}">×</button>`}
         </div>`).join('') || '<div class="empty">Chưa có kho</div>';
-      root.querySelectorAll('.kho-btn').forEach(btn => {
-        btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
-      });
-      root.querySelectorAll('[data-delete-kho]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const w = (warehouseSummary.warehouses || []).find(x => x.id === btn.dataset.deleteKho);
-          deleteWarehouse(btn.dataset.deleteKho, w ? w.name : 'kho', w ? w.count : 0);
+      const root = document.getElementById('khoList');
+      root.innerHTML = khoHtml;
+      const accountRoot = document.getElementById('accountKhoList');
+      if (accountRoot) accountRoot.innerHTML = khoHtml;
+      [root, accountRoot].filter(Boolean).forEach(r => {
+        r.querySelectorAll('.kho-btn').forEach(btn => {
+          btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
+        });
+        r.querySelectorAll('[data-delete-kho]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const w = (warehouseSummary.warehouses || []).find(x => x.id === btn.dataset.deleteKho);
+            deleteWarehouse(btn.dataset.deleteKho, w ? w.name : 'kho', w ? w.count : 0);
+          });
         });
       });
-      if (viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff') {
+      document.getElementById('khoSizeLabel').textContent = `Kho · ${warehouseSummary.max_per_warehouse} TK / kho`;
+      const perWhInput = document.getElementById('accountPerWarehouse');
+      if (perWhInput && document.activeElement !== perWhInput) perWhInput.value = warehouseSummary.max_per_warehouse;
+      if (viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff' || viewMode === 'account') {
         root.querySelectorAll('.kho-btn').forEach(btn => btn.classList.remove('active'));
       }
       document.getElementById('khoTitle').textContent = active ? active.name : 'Kho';
@@ -530,20 +562,23 @@
       const signup = viewMode === 'signup' || viewMode === 'password';
       const cards = viewMode === 'cards';
       const buff = viewMode === 'buff';
-      document.getElementById('khoView').hidden = signup || cards || buff;
+      const account = viewMode === 'account';
+      document.getElementById('khoView').hidden = signup || cards || buff || account;
       document.getElementById('signupView').hidden = !signup;
       document.getElementById('cardView').hidden = !cards;
       document.getElementById('buffView').hidden = !buff;
+      document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = viewMode === 'password' ? 'Tạo TK có mật khẩu' : 'Tạo TK không mật khẩu';
       document.getElementById('btnCreateAccount').classList.toggle('active', viewMode === 'signup');
       document.getElementById('btnCreatePassword').classList.toggle('active', viewMode === 'password');
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
-      if (signup || cards || buff) document.querySelectorAll('#khoList .kho-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btnAccountView').classList.toggle('active', account);
+      if (signup || cards || buff || account) document.querySelectorAll('#khoList .kho-btn').forEach(btn => btn.classList.remove('active'));
     }
 
     async function setActiveWarehouse(id) {
-      const leavingSignup = viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff';
+      const leavingSignup = viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff' || viewMode === 'account';
       viewMode = 'kho';
       if (!id || (id === activeWarehouseId && !leavingSignup)) return;
       if (id !== activeWarehouseId) {
@@ -1177,6 +1212,7 @@
         await loadCreated();
         return;
       }
+      if (viewMode === 'account') return;
       await loadEditor();
     }
 
@@ -1220,6 +1256,28 @@
       await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       await refreshAll();
       toast('Đã tạo kho mới');
+    });
+    document.getElementById('btnAccountView').addEventListener('click', async () => {
+      viewMode = 'account';
+      await refreshAll();
+    });
+    document.getElementById('btnOpenImportAccount').addEventListener('click', openDrawer);
+    document.getElementById('btnNewWarehouseAccount').addEventListener('click', async () => {
+      await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      await refreshAll();
+      toast('Đã tạo kho mới');
+    });
+    document.getElementById('btnSavePerWarehouse').addEventListener('click', async () => {
+      const input = document.getElementById('accountPerWarehouse');
+      const res = await fetch('/api/settings/accounts-per-warehouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: Number(input.value) }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không lưu được'); return; }
+      toast(`Đã lưu: ${data.accounts_per_warehouse} TK / kho`);
+      await refreshAll();
     });
     document.getElementById('btnCreateAccount').addEventListener('click', async () => {
       viewMode = 'signup';

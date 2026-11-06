@@ -35,7 +35,6 @@ from muse_automation import (
     stop_requested,
 )
 from warehouse_store import (
-    ACCOUNTS_PER_WAREHOUSE,
     add_card_warehouse,
     add_created_account,
     create_created_warehouse,
@@ -52,6 +51,7 @@ from warehouse_store import (
     find_created_account,
     get_account_password_for_email,
     get_accounts_for_warehouse,
+    get_accounts_per_warehouse,
     get_active_warehouse,
     get_proxy_for_email,
     get_totp_secret_for_email,
@@ -65,6 +65,7 @@ from warehouse_store import (
     restore_account_from_error,
     save_active_accounts,
     warehouse_invite_code,
+    set_accounts_per_warehouse,
     set_active_warehouse,
     set_created_invite_code,
     set_invite_chain_code,
@@ -74,7 +75,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v79"
+APP_BUILD = "signup-v80"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -201,6 +202,13 @@ def api_warehouses_rename(warehouse_id: str):
     return jsonify({"ok": True, "summary": list_warehouses_summary()})
 
 
+@app.post("/api/settings/accounts-per-warehouse")
+def api_settings_accounts_per_warehouse():
+    body = request.get_json(force=True, silent=True) or {}
+    value = set_accounts_per_warehouse(body.get("value"))
+    return jsonify({"ok": True, "accounts_per_warehouse": value, "summary": list_warehouses_summary()})
+
+
 @app.post("/api/warehouses/import-split")
 def api_warehouses_import_split():
     body = request.get_json(force=True, silent=True) or {}
@@ -245,7 +253,7 @@ def api_list_accounts():
             "warehouse": {
                 "id": wh["id"],
                 "name": wh.get("name"),
-                "max": ACCOUNTS_PER_WAREHOUSE,
+                "max": get_accounts_per_warehouse(),
                 "count": len(accounts),
             },
         }
@@ -275,9 +283,9 @@ def api_save_accounts():
             {"email": email, "lay2fa_url": lay2fa_url, "totp_secret": totp_secret, "proxy": proxy}
         )
     active = get_active_warehouse()
-    if active.get("kind") != "error" and len(rows) > ACCOUNTS_PER_WAREHOUSE:
+    if active.get("kind") != "error" and len(rows) > get_accounts_per_warehouse():
         return jsonify(
-            {"ok": False, "error": f"Mỗi kho tối đa {ACCOUNTS_PER_WAREHOUSE} tài khoản. Dùng Dán tài khoản để chia nhiều kho."}
+            {"ok": False, "error": f"Mỗi kho tối đa {get_accounts_per_warehouse()} tài khoản. Dùng Dán tài khoản để chia nhiều kho."}
         ), 400
     save_active_accounts(rows)
     return jsonify({"ok": True, "count": len(rows), "summary": list_warehouses_summary()})
@@ -308,8 +316,8 @@ def api_import_accounts():
             "proxy": previous.get("proxy", ""),
         }
     merged = list(by_email.values())
-    if len(merged) > ACCOUNTS_PER_WAREHOUSE:
-        return jsonify({"ok": False, "error": f"Kho hiện tại tối đa {ACCOUNTS_PER_WAREHOUSE} TK."}), 400
+    if len(merged) > get_accounts_per_warehouse():
+        return jsonify({"ok": False, "error": f"Kho hiện tại tối đa {get_accounts_per_warehouse()} TK."}), 400
     save_active_accounts(merged)
     return jsonify({"ok": True, "added": added, "total": len(by_email)})
 
@@ -1829,7 +1837,7 @@ def api_cookies_vault():
         {
             "items": items,
             "total": len(items),
-            "warehouse": {"id": wh["id"], "name": wh.get("name"), "max": ACCOUNTS_PER_WAREHOUSE},
+            "warehouse": {"id": wh["id"], "name": wh.get("name"), "max": get_accounts_per_warehouse()},
         }
     )
 
