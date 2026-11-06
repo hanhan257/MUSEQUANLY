@@ -277,6 +277,7 @@
         <p>Kho tài khoản · cookie · OTP Lay2FA</p>
       </div>
       <div class="side-actions">
+        <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản</button>
         <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ</button>
@@ -296,7 +297,6 @@
           <button type="button" class="btn-all" id="btnBatchAll">Lấy cookie kho này · 5 luồng</button>
           <button type="button" class="btn-primary" id="btnRelogin" title="Đăng nhập lại cả kho, kể cả tài khoản đã có cookie">Đăng nhập lấy lại cookie</button>
           <button type="button" class="btn-error" id="btnStop">Dừng</button>
-          <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           <label class="check-inline"><input type="checkbox" id="skipExisting" checked /> Bỏ qua TK đã có cookie</label>
         </div>
       </div>
@@ -342,7 +342,6 @@
             <button type="button" class="btn-primary" id="btnCustomSignup">Tạo</button>
             <button type="button" class="btn-ghost" id="btnNewCreatedKho">Tạo kho mới</button>
             <button type="button" class="btn-error" id="btnStopSignup">Dừng</button>
-            <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           </div>
           <div class="toolbar" id="createdCookieTools">
             <button type="button" class="btn-all" id="btnCreatedCookies">Lấy cookie kho này · 5 luồng</button>
@@ -383,7 +382,6 @@
           <div class="toolbar">
             <button type="button" class="btn-primary" id="btnBuff">Buff tài khoản</button>
             <button type="button" class="btn-error" id="btnStopBuff">Dừng</button>
-            <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
           </div>
         </div>
         <div class="signup-proxy">
@@ -445,7 +443,6 @@
           <input id="cardExpiry" placeholder="MM/YY" autocomplete="off" style="width:6.2rem;" />
           <input id="cardCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="width:5.2rem;" />
           <button type="button" class="btn-primary" id="btnAddCard">Thêm thẻ</button>
-          <button type="button" class="btn-ghost btnGoAccount">Quản lý tài khoản</button>
         </div>
         <div class="toolbar" id="cardFilterBar" style="margin-bottom:0.75rem;">
           <button type="button" class="btn-ghost btn-sm" data-card-filter="all">Tất cả</button>
@@ -568,6 +565,7 @@
       document.getElementById('btnCreatePassword').classList.toggle('active', viewMode === 'password');
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
+      document.getElementById('btnAccountView').classList.toggle('active', account);
     }
 
     async function setActiveWarehouse(id) {
@@ -1285,10 +1283,10 @@
     });
     document.getElementById('btnSplitReplace').addEventListener('click', () => importSplit('replace'));
     document.getElementById('btnSplitAppend').addEventListener('click', () => importSplit('append'));
-    document.querySelectorAll('.btnGoAccount').forEach(btn => btn.addEventListener('click', async () => {
+    document.getElementById('btnAccountView').addEventListener('click', async () => {
       viewMode = 'account';
       await refreshAll();
-    }));
+    });
     document.getElementById('btnOpenImportAccount').addEventListener('click', openDrawer);
     document.getElementById('btnNewWarehouseAccount').addEventListener('click', async () => {
       await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
