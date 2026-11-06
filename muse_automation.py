@@ -2010,12 +2010,34 @@ def _find_invite_input(page: Page):
     for frame in _frames(page):
         try:
             loc = frame.locator(
-                "input[aria-label*='invite' i], input[aria-label*='mã lời' i], input[aria-label*='mã mời' i]"
+                "input[aria-label*='invite' i], input[aria-label*='mã lời' i], input[aria-label*='mã mời' i], "
+                "input[placeholder*='invite' i], input[placeholder*='code' i]"
             )
             if loc.count() > 0:
                 return loc.first
         except Exception:
             continue
+    # Trang Quy đổi đã mở nhưng ô nhập không có nhãn nhận diện được: lấy ô text duy nhất đang hiện.
+    if _text_visible(page, REDEEM_ROW):
+        for frame in _frames(page):
+            try:
+                fields = frame.locator(
+                    "input:not([type='hidden']):not([type='checkbox']):not([type='radio'])"
+                    ":not([type='file']):not([type='submit']):not([type='button'])"
+                )
+                visible = []
+                total = min(fields.count(), 10)
+                for index in range(total):
+                    item = fields.nth(index)
+                    try:
+                        if item.is_visible():
+                            visible.append(item)
+                    except Exception:
+                        continue
+                if len(visible) == 1:
+                    return visible[0]
+            except Exception:
+                continue
     return None
 
 
@@ -2182,40 +2204,78 @@ def _harvest_invite_code(page: Page, email: str, on_progress: ProgressCallback |
     raise RuntimeError("Đã vào Muse nhưng chưa trích xuất được mã giới thiệu")
 
 
-def _open_redeem(page: Page) -> None:
-    for _ in range(12):
+_REDEEM_ROW_JS = r"""() => {
+  const needles = ['redeem invite code', 'quy đổi mã lời mời', 'have an invite code'];
+  let best = null;
+  let bestDepth = -1;
+  for (const el of document.querySelectorAll('body *')) {
+    const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!t || t.length > 80) continue;
+    if (!needles.some((n) => t.includes(n))) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.display === 'none') continue;
+    let depth = 0;
+    let node = el;
+    while (node && node !== document.body) { depth++; node = node.parentElement; }
+    if (depth > bestDepth) { best = el; bestDepth = depth; }
+  }
+  if (!best) return false;
+  best.click();
+  return true;
+}"""
+
+
+def _click_redeem_row(page: Page) -> bool:
+    """Bấm dòng Quy đổi mã lời mời. Dòng này có thể chỉ là div bấm được,
+    không phải nút, nên bấm thường không trúng thì bấm bằng JS vào đúng dòng đó."""
+    if _click_label(page, REDEEM_ROW):
+        return True
+    for frame in _frames(page):
+        try:
+            if frame.evaluate(_REDEEM_ROW_JS):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _open_redeem(page: Page, on_progress: ProgressCallback | None = None) -> None:
+    for _ in range(16):
         if stop_requested():
             raise RuntimeError("Đã dừng")
         if _find_invite_input(page) is not None:
             return
-        if _click_label(page, REDEEM_ROW):
-            page.wait_for_timeout(500)
+        if _click_redeem_row(page):
+            _emit(on_progress, step="invite", detail="Đã bấm Quy đổi mã lời mời, chờ ô nhập mã…")
+            page.wait_for_timeout(800)
             continue
-        if _click_label(page, USAGE_NAME):
-            page.wait_for_timeout(400)
-            continue
-        if _click_label(page, GENERAL_NAME):
-            page.wait_for_timeout(400)
-            continue
+        if _text_visible(page, SETTINGS_NAME):
+            # Cài đặt đã mở nhưng chưa thấy dòng Quy đổi: về General rồi thử lại.
+            if _click_label(page, GENERAL_NAME):
+                page.wait_for_timeout(500)
+                continue
         if _click_label(page, SETTINGS_NAME):
+            _emit(on_progress, step="invite", detail="Đã mở Cài đặt…")
             page.wait_for_timeout(500)
             continue
         if not _click_label(page, MENU_BTN):
             _click_bottom_left_menu(page)
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(500)
     raise RuntimeError("Đã vào Muse nhưng chưa thấy Quy đổi mã lời mời")
 
 
 def _redeem_invite(page: Page, code: str, on_progress: ProgressCallback | None) -> None:
     _emit(on_progress, step="invite", detail=f"Vào Cài đặt, quy đổi mã {code}")
-    _open_redeem(page)
+    _open_redeem(page, on_progress)
     field = _find_invite_input(page)
     if field is None:
         raise RuntimeError("Đã mở Quy đổi mã lời mời nhưng chưa thấy ô nhập mã")
     _type_invite_code(field, code)
     page.wait_for_timeout(400)
     _click_enabled_button(page, REDEEM_OK)
-    for _ in range(16):
+    for tick in range(16):
         if stop_requested():
             raise RuntimeError("Đã dừng")
         err = _alert_text(page)
@@ -2224,10 +2284,11 @@ def _redeem_invite(page: Page, code: str, on_progress: ProgressCallback | None) 
         if _text_visible(page, INVITE_OK):
             _emit(on_progress, step="invite", detail=f"Đã quy đổi mã {code}")
             return
+        if tick >= 4 and _find_invite_input(page) is None:
+            # Ô nhập đã biến mất, không có lỗi: trang đã quy đổi xong và quay lại.
+            _emit(on_progress, step="invite", detail=f"Đã quy đổi mã {code}")
+            return
         page.wait_for_timeout(500)
-    if _find_invite_input(page) is None and not _text_visible(page, REDEEM_ROW):
-        _emit(on_progress, step="invite", detail=f"Đã quy đổi mã {code}")
-        return
     raise RuntimeError(f"Đã nhập mã {code} nhưng chưa thấy Muse xác nhận quy đổi")
 
 
