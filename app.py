@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import uuid
 import webbrowser
@@ -64,7 +65,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v63"
+APP_BUILD = "signup-v64"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -873,26 +874,28 @@ def _signup_one_run(
         publish()
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None) -> None:
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "") -> None:
     clear_stop()
     proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
+    seed = (seed or "").strip().upper()
     state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
     state_lock = threading.Lock()
     workers = _signup_workers(count, len(proxies))
     via = f" · mỗi tài khoản 1 proxy" if proxies else ""
+    seed_note = f" · mã mời {seed} cho TK đầu" if seed else ""
     _set_job(
         job_id,
         {
             "status": "running",
             "step": "batch",
-            "detail": f"Tạo {count} tài khoản" + via + (f" · {workers} luồng" if workers > 1 else ""),
+            "detail": f"Tạo {count} tài khoản" + via + seed_note + (f" · {workers} luồng" if workers > 1 else ""),
             "total": count,
             "done_count": 0,
             "ok_count": 0,
             "fail_count": 0,
         },
     )
-    chain = _InviteChain(count, latest_invite_code())
+    chain = _InviteChain(count, seed or latest_invite_code())
     with ThreadPoolExecutor(max_workers=workers) as pool:
         list(
             pool.map(
@@ -1060,6 +1063,9 @@ def api_signup():
     except (TypeError, ValueError):
         count = 1 if raw_count in (None, "") else 0
     proxies = [normalize_proxy_line(line) for line in (body.get("proxies") or "").splitlines() if normalize_proxy_line(line)]
+    invite_code = (body.get("invite_code") or "").strip().upper()
+    if invite_code and not re.fullmatch(r"[A-Z0-9]{4,16}", invite_code):
+        return jsonify({"ok": False, "error": "Mã mời chỉ gồm chữ và số, dài 4–16 ký tự."}), 400
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
     if proxies and len(proxies) < count:
@@ -1079,7 +1085,7 @@ def api_signup():
             "total": count,
         },
     )
-    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies), daemon=True)
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers})
 

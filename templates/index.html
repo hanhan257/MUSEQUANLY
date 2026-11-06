@@ -300,7 +300,7 @@
         <div class="top">
           <div>
             <h2 id="signupTitle">Tạo TK không mật khẩu</h2>
-            <div class="meta" id="signupMeta">Mail ngẫu nhiên @fldubai.com · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu</div>
+            <div class="meta" id="signupMeta">Mail ngẫu nhiên @mailto.plus · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu</div>
           </div>
           <div class="toolbar" id="signupTools">
             <button type="button" class="btn-primary" data-signup-count="1">1 TK</button>
@@ -324,8 +324,12 @@
         </div>
         <div class="created-kho" id="createdKhoList"></div>
         <div class="signup-proxy">
-          <label for="signupProxies">Mỗi dòng một tài khoản. Chrome mới nhận proxy trước, chỉ tạo khi IP ra là Mỹ, rồi mới tạo mail và kiểm tra đăng nhập lại được. 100 dòng thì tạo 100 tài khoản, chỉ mở 5 Chrome cùng lúc. Dạng ip:port hoặc ip:port:user:pass. Để trống thì dùng VPN, IP đó cũng phải là Mỹ. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy. Tài khoản đầu chưa có mã thì bỏ qua. Tài khoản sau vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước.</label>
+          <label for="signupProxies">Mỗi dòng một tài khoản. 100 dòng thì tạo 100 tài khoản, chỉ mở 5 Chrome cùng lúc. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
           <textarea id="signupProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
+        </div>
+        <div class="signup-proxy">
+          <label for="signupInviteCode">Mã mời cho tài khoản đầu tiên — tài khoản sau tự vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước. Để trống thì dùng mã đã lưu, chưa có mã thì tài khoản đầu bỏ qua.</label>
+          <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
         </div>
         <div class="panel">
           <div id="signupStatus" class="login-status"></div>
@@ -922,8 +926,8 @@
       });
       if (active) {
         document.getElementById('signupMeta').textContent = viewMode === 'password'
-          ? `${active.name} · ${active.count}/${active.max} · han + 9 số @fldubai.com · mật khẩu mail.tm Congphu21@ · đăng nhập mail.tm lần sau vẫn lấy được mã`
-          : `${active.name} · ${active.count}/${active.max} · mail ngẫu nhiên @fldubai.com · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu`;
+          ? `${active.name} · ${active.count}/${active.max} · han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã`
+          : `${active.name} · ${active.count}/${active.max} · mail ngẫu nhiên @mailto.plus · mật khẩu hộp thư Congphu21@ · Muse không có mật khẩu`;
       }
       const root = document.getElementById('signupTable');
       if (!createdAccounts.length) {
@@ -936,7 +940,7 @@
         <table>
           <thead><tr>
             <th class="check"><input type="checkbox" id="createdCheckAll" title="Tích tất cả cookie trong kho này" /></th>
-            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu mail.tm</th><th>Mã mời</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
+            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu hộp thư</th><th>Mã mời</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
           </tr></thead>
           <tbody>
             ${createdAccounts.map((a, i) => {
@@ -1159,9 +1163,15 @@
     function setSignupButtons(disabled) {
       document.querySelectorAll('[data-signup-count], #btnCustomSignup').forEach(btn => { btn.disabled = disabled; });
       document.getElementById('signupCustomCount').disabled = disabled;
+      document.getElementById('signupInviteCode').disabled = disabled;
     }
     async function startSignup(count, mode) {
       const proxies = signupProxyLines();
+      const inviteCode = (document.getElementById('signupInviteCode').value || '').trim().toUpperCase();
+      if (inviteCode && !/^[A-Z0-9]{4,16}$/.test(inviteCode)) {
+        setSignupStatus('Mã mời chỉ gồm chữ và số, dài 4–16 ký tự.', 'error');
+        return;
+      }
       if (proxies.length > 200) {
         setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
         return;
@@ -1176,7 +1186,7 @@
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, 5) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${count} proxy, 5 Chrome cùng lúc` : '';
-      const lead = mode === 'plain' ? 'Đang tạo mail @fldubai.com, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@';
+      const lead = mode === 'plain' ? 'Đang tạo mail @mailto.plus, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
         'running'
@@ -1184,7 +1194,7 @@
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mode, proxies: used.join('\n') }),
+        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -1231,14 +1241,14 @@
     }
     async function fetchCreatedOtp(encodedEmail) {
       const email = decodeURIComponent(encodedEmail);
-      setSignupStatus('Đang lấy mã mail.tm của ' + email + '…', 'running');
+      setSignupStatus('Đang lấy mã tempmail.plus của ' + email + '…', 'running');
       const res = await fetch('/api/otp/' + encodeURIComponent(email), { cache: 'no-store' });
       const data = await res.json();
       if (!data.code) {
         setSignupStatus(data.error || 'Hộp thư chưa có mã', 'error');
         return;
       }
-      setSignupStatus(email + ' · mã mail.tm ' + data.code, 'done');
+      setSignupStatus(email + ' · mã tempmail.plus ' + data.code, 'done');
       toast('Mã ' + data.code);
     }
     async function startCreatedLogin(encodedEmail, closeAfter) {
