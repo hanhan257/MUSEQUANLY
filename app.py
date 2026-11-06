@@ -38,6 +38,8 @@ from warehouse_store import (
     add_created_account,
     create_created_warehouse,
     delete_card_warehouse,
+    delete_created_warehouse,
+    delete_warehouse,
     list_card_warehouses,
     list_created_accounts,
     set_active_created_warehouse,
@@ -67,7 +69,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v70"
+APP_BUILD = "signup-v71"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -172,6 +174,15 @@ def api_warehouses_create():
     body = request.get_json(force=True, silent=True) or {}
     wh = create_warehouse(body.get("name"))
     return jsonify({"ok": True, "warehouse": wh, "summary": list_warehouses_summary()})
+
+
+@app.post("/api/warehouses/delete")
+def api_warehouses_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    result = delete_warehouse((body.get("id") or "").strip())
+    if result is None:
+        return jsonify({"ok": False, "error": "Không thấy kho hoặc không xóa được Kho lỗi"}), 404
+    return jsonify({"ok": True, **result})
 
 
 @app.patch("/api/warehouses/<warehouse_id>")
@@ -1154,6 +1165,16 @@ def api_created_warehouses_create():
     kind = "password" if body.get("kind") == "password" else "plain"
     wh = create_created_warehouse(kind, body.get("name"))
     return jsonify({"ok": True, "warehouse": {"id": wh.get("id"), "name": wh.get("name"), "kind": kind}, **list_created_accounts(wh.get("id"), kind)})
+
+
+@app.post("/api/created/warehouses/delete")
+def api_created_warehouses_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    result = delete_created_warehouse((body.get("id") or "").strip())
+    if result is None:
+        return jsonify({"ok": False, "error": "Không thấy kho tạo"}), 404
+    kind = result.get("kind") or "plain"
+    return jsonify({"ok": True, **result, **list_created_accounts(None, kind)})
 
 
 @app.post("/api/created/active")

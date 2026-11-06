@@ -134,6 +134,23 @@ def get_account_cookies(email: str) -> dict[str, Any] | None:
     return _load_raw().get(normalize_email_key(email))
 
 
+def delete_account_cookies(email: str) -> bool:
+    return delete_account_cookies_many([email]) > 0
+
+
+def delete_account_cookies_many(emails) -> int:
+    data = _load_raw()
+    removed = 0
+    for email in emails or []:
+        key = normalize_email_key(email or "")
+        if key and key in data:
+            del data[key]
+            removed += 1
+    if removed:
+        _save_raw(data)
+    return removed
+
+
 def list_all_cookies() -> dict[str, Any]:
     return _load_raw()
 

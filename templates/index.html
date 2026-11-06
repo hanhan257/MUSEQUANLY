@@ -86,6 +86,11 @@
     .kho-btn.error.active { background: rgba(255, 107, 107, 0.16); border-color: rgba(255, 107, 107, 0.55); }
     .btn-error { background: #3a2228; color: #ffb4b4; border: 1px solid #6a3038; }
     .kho-count { font-size: 0.72rem; color: var(--muted); font-weight: 500; }
+    .kho-row { display: flex; align-items: center; gap: 0.15rem; }
+    .kho-row .kho-btn { flex: 1; min-width: 0; }
+    .kho-del { flex: 0 0 auto; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.3rem 0.4rem; border-radius: 6px; }
+    .kho-del:hover { color: #ffb4b4; background: rgba(255, 107, 107, 0.14); }
+    .created-kho .kho-row { display: inline-flex; }
     .side-actions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0; }
     .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
     .created-kho { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
@@ -424,12 +429,21 @@
       activeWarehouseKind = active?.kind || 'normal';
       const root = document.getElementById('khoList');
       root.innerHTML = list.map(w => `
-        <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''}" data-id="${w.id}">
-          <span>${escapeHtml(w.name)}</span>
-          <span class="kho-count">${w.kind === 'error' ? w.count : w.count + '/' + w.max}</span>
-        </button>`).join('') || '<div class="empty">Chưa có kho</div>';
+        <div class="kho-row">
+          <button type="button" class="kho-btn ${w.kind === 'error' ? 'error' : ''} ${w.active ? 'active' : ''}" data-id="${w.id}">
+            <span>${escapeHtml(w.name)}</span>
+            <span class="kho-count">${w.kind === 'error' ? w.count : w.count + '/' + w.max}</span>
+          </button>
+          ${w.kind === 'error' ? '' : `<button type="button" class="kho-del" data-delete-kho="${w.id}" title="Xóa ${escapeHtml(w.name)}">×</button>`}
+        </div>`).join('') || '<div class="empty">Chưa có kho</div>';
       root.querySelectorAll('.kho-btn').forEach(btn => {
         btn.addEventListener('click', () => setActiveWarehouse(btn.dataset.id));
+      });
+      root.querySelectorAll('[data-delete-kho]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const w = (warehouseSummary.warehouses || []).find(x => x.id === btn.dataset.deleteKho);
+          deleteWarehouse(btn.dataset.deleteKho, w ? w.name : 'kho', w ? w.count : 0);
+        });
       });
       if (viewMode === 'signup' || viewMode === 'password' || viewMode === 'cards') {
         root.querySelectorAll('.kho-btn').forEach(btn => btn.classList.remove('active'));
@@ -468,6 +482,19 @@
         activeWarehouseId = id;
         toast('Đã chuyển kho');
       }
+      await refreshAll();
+    }
+
+    async function deleteWarehouse(id, name, count) {
+      if (!confirm(`Xóa ${name} (${count} tài khoản)? Tài khoản trong kho và cookie của chúng cũng bị xóa. Kho còn lại tự đánh số lại từ Kho 1.`)) return;
+      const res = await fetch('/api/warehouses/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      toast(`Đã xóa ${name}`);
       await refreshAll();
     }
 
@@ -921,12 +948,21 @@
       const khoRoot = document.getElementById('createdKhoList');
       const active = (createdBoard.warehouses || []).find(w => w.active);
       khoRoot.innerHTML = (createdBoard.warehouses || []).map(w => `
-        <button type="button" class="kho-btn ${w.active ? 'active' : ''}" data-created-kho="${w.id}">
-          <span>${escapeHtml(w.name)}</span>
-          <span class="kho-count">${w.count}/${w.max}</span>
-        </button>`).join('');
+        <div class="kho-row">
+          <button type="button" class="kho-btn ${w.active ? 'active' : ''}" data-created-kho="${w.id}">
+            <span>${escapeHtml(w.name)}</span>
+            <span class="kho-count">${w.count}/${w.max}</span>
+          </button>
+          <button type="button" class="kho-del" data-delete-created-kho="${w.id}" title="Xóa ${escapeHtml(w.name)}">×</button>
+        </div>`).join('');
       khoRoot.querySelectorAll('[data-created-kho]').forEach(btn => {
         btn.addEventListener('click', () => setCreatedWarehouse(btn.dataset.createdKho));
+      });
+      khoRoot.querySelectorAll('[data-delete-created-kho]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const w = (createdBoard.warehouses || []).find(x => x.id === btn.dataset.deleteCreatedKho);
+          deleteCreatedWarehouse(btn.dataset.deleteCreatedKho, w ? w.name : 'kho', w ? w.count : 0);
+        });
       });
       if (active) {
         document.getElementById('signupMeta').textContent = viewMode === 'password'
@@ -1025,6 +1061,21 @@
         body: JSON.stringify({ id, kind: viewMode === 'password' ? 'password' : 'plain' }),
       });
       await loadCreated();
+    }
+
+    async function deleteCreatedWarehouse(id, name, count) {
+      if (!confirm(`Xóa ${name} (${count} tài khoản)? Tài khoản trong kho và cookie của chúng cũng bị xóa. Kho còn lại tự đánh số lại từ Kho 1.`)) return;
+      const res = await fetch('/api/created/warehouses/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      createdBoard = data;
+      createdAccounts = data.accounts || [];
+      renderCreated();
+      toast(`Đã xóa ${name}`);
     }
 
     async function loadCreated() {

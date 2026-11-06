@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app_paths import DATA_DIR
-from cookie_store import get_account_cookies, token_from_cookie_header
+from cookie_store import delete_account_cookies_many, get_account_cookies, token_from_cookie_header
 from lay2fa_client import parse_account_line
 
 WAREHOUSES_FILE = DATA_DIR / "warehouses.json"
@@ -376,6 +376,36 @@ def rename_warehouse(warehouse_id: str, name: str) -> bool:
     return True
 
 
+def _renumber_named_warehouses(warehouses: list[dict[str, Any]]) -> None:
+    """Danh lai Kho 1..N theo thu tu cho cac kho ten 'Kho <so>' (bo qua kho ten khac va Kho loi)."""
+    number = 0
+    for wh in warehouses:
+        parts = (wh.get("name") or "").split()
+        if len(parts) == 2 and parts[0] == "Kho" and parts[1].isdigit():
+            number += 1
+            wh["name"] = f"Kho {number}"
+
+
+def delete_warehouse(warehouse_id: str) -> dict[str, Any] | None:
+    """Xoa kho thuong: xoa kho + tai khoan trong kho + cookie cua chung, danh lai Kho 1..N.
+    Kho loi khong xoa duoc. Tra None neu khong thay kho."""
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        target = get_warehouse(warehouse_id, data)
+        if target is None or _is_error_warehouse(target):
+            return None
+        emails = [(acc.get("email") or "") for acc in target.get("accounts") or []]
+        name = target.get("name") or "Kho"
+        data["warehouses"] = [wh for wh in data.get("warehouses") or [] if wh.get("id") != warehouse_id]
+        _renumber_named_warehouses(data.get("warehouses") or [])
+        if data.get("active_warehouse_id") == warehouse_id:
+            regular = _regular_warehouses(data)
+            data["active_warehouse_id"] = regular[0]["id"] if regular else None
+        _save(data)
+    delete_account_cookies_many(emails)
+    return {"deleted": name, "count": len(emails), **list_warehouses_summary()}
+
+
 def _created_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for wh in data.get("created_warehouses") or []:
@@ -595,6 +625,28 @@ def set_active_created_warehouse(warehouse_id: str) -> bool:
     data[key] = warehouse_id
     _save(data)
     return True
+
+
+def delete_created_warehouse(warehouse_id: str) -> dict[str, Any] | None:
+    """Xoa kho da tao: xoa kho + tai khoan trong kho + cookie cua chung, danh lai Kho 1..N trong cung loai (plain/password).
+    Tra None neu khong thay kho."""
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        target = next((wh for wh in data.get("created_warehouses") or [] if wh.get("id") == warehouse_id), None)
+        if target is None:
+            return None
+        kind = target.get("kind") or "plain"
+        emails = [(acc.get("email") or "") for acc in target.get("accounts") or []]
+        name = target.get("name") or "Kho"
+        data["created_warehouses"] = [wh for wh in data.get("created_warehouses") or [] if wh.get("id") != warehouse_id]
+        _renumber_named_warehouses([wh for wh in data.get("created_warehouses") or [] if (wh.get("kind") or "plain") == kind])
+        for key in ("active_created_warehouse_id", "active_created_plain_id", "active_created_password_id"):
+            if data.get(key) == warehouse_id:
+                same = [wh for wh in data.get("created_warehouses") or [] if (wh.get("kind") or "plain") == kind]
+                data[key] = same[0]["id"] if same else None
+        _save(data)
+    delete_account_cookies_many(emails)
+    return {"deleted": name, "kind": kind, "count": len(emails)}
 
 
 def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "plain", proxy: str = "") -> dict[str, Any]:
