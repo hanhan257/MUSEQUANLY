@@ -61,6 +61,7 @@ from warehouse_store import (
     rename_warehouse,
     restore_account_from_error,
     save_active_accounts,
+    warehouse_invite_code,
     set_active_warehouse,
     set_created_invite_code,
     set_invite_chain_code,
@@ -70,7 +71,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v72"
+APP_BUILD = "signup-v73"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1027,6 +1028,16 @@ def _signup_one_run(
         publish(f"Đã lưu {email}. Hộp thư đọc lại được." if count == 1 else None)
         return email, token, password if mode == "password" else None
 
+    def take_prior() -> str | None:
+        if chain is not None:
+            prior = chain.wait_prior(index)
+            if prior:
+                return prior
+        # Không lấy được mã của tài khoản trước (tài khoản trước lỗi, hoặc chưa có mã):
+        # lấy mã trong kho (mã mới nhất, khác tài khoản này) để tài khoản nào cũng có mã nhập.
+        fallback = warehouse_invite_code(email, kind="password" if mode == "password" else "plain")
+        return fallback or None
+
     try:
         result = create_muse_account(
             "",
@@ -1034,7 +1045,7 @@ def _signup_one_run(
             proxy=proxy or None,
             keep_open=count == 1,
             on_progress=on_progress,
-            take_prior=(lambda: chain.wait_prior(index)) if chain is not None else None,
+            take_prior=take_prior,
             on_invite=on_invite,
             on_redeem=on_redeem,
             prepare_mail=prepare_mail,

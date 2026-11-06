@@ -727,6 +727,23 @@ def latest_invite_code() -> str:
     return (data.get("invite_chain_code") or "").strip().upper()
 
 
+def warehouse_invite_code(exclude_email: str = "", *, kind: str | None = None, exclude_codes: tuple[str, ...] = ()) -> str:
+    """Lấy 1 mã mời trong kho đã tạo (mã mới nhất, khác tài khoản hiện tại và khác các mã đã thử).
+    Dùng làm phương án dự phòng khi không lấy được mã của tài khoản trước, để tài khoản nào cũng có mã nhập."""
+    data = ensure_initialized()
+    exclude = (exclude_email or "").strip().lower()
+    skip = {(code or "").strip().upper() for code in exclude_codes}
+    for acc in reversed(_created_rows(data)):
+        if kind is not None and _account_kind(acc) != kind:
+            continue
+        if (acc.get("email") or "").strip().lower() == exclude:
+            continue
+        code = (acc.get("invite_code") or "").strip().upper()
+        if code and code not in skip:
+            return code
+    return ""
+
+
 def set_invite_chain_code(code: str) -> None:
     code = (code or "").strip().upper()
     if not code:

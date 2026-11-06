@@ -16,6 +16,7 @@ from typing import Callable
 from playwright.sync_api import Page
 
 from cookie_store import cookies_to_header, filter_muse_cookies, get_account_cookies, save_account_cookies, update_account_meta
+from warehouse_store import warehouse_invite_code
 from lay2fa_client import fetch_2fa_live_code, meta_message_ids, wait_for_new_muse_code
 
 MUSE_URL = "https://muse.ai/"
@@ -2854,6 +2855,13 @@ def _fill_redeem_code(page: Page, code: str) -> bool:
     return False
 
 
+def _should_retry_redeem(exc: Exception) -> bool:
+    """Chỉ thử lại khi lỗi có vẻ do mã bị Muse từ chối (nút Xác nhận không sáng,
+    hoặc Muse báo không nhận mã). Lỗi mở trang / điền mã thì thử lại cũng hỏng, không phí thêm 1 vòng."""
+    text = str(exc)
+    return "không nhận mã" in text or "chưa sáng" in text
+
+
 def _redeem_invite(page: Page, code: str, on_progress: ProgressCallback | None) -> None:
     _emit(on_progress, step="invite", detail=f"Vào Cài đặt, quy đổi mã {code}")
     _open_redeem(page, on_progress)
@@ -2944,16 +2952,33 @@ def _chain_invites(
     if stop_requested():
         raise RuntimeError("Đã dừng")
     if prior and prior != own:
+        redeemed_code = ""
+        last_error: Exception | None = None
         try:
             _redeem_invite(page, prior, on_progress)
+            redeemed_code = prior
         except Exception as exc:
             if stop_requested() or str(exc) == "Đã dừng":
                 raise
-            note = f"Mã {own} và cookie đã lưu. Chưa quy đổi được mã trước: {exc}"
+            last_error = exc
+            # Mã bị Muse từ chối: thử lại 1 lần bằng mã trong kho (khác mã vừa thử và khác mã riêng).
+            if _should_retry_redeem(exc):
+                fallback = warehouse_invite_code(email, exclude_codes=(prior, own))
+                if fallback:
+                    try:
+                        _redeem_invite(page, fallback, on_progress)
+                        redeemed_code = fallback
+                    except Exception as exc2:
+                        if stop_requested() or str(exc2) == "Đã dừng":
+                            raise
+                        last_error = exc2
+        if redeemed_code:
+            if on_redeem is not None:
+                on_redeem(redeemed_code)
+        else:
+            note = f"Mã {own} và cookie đã lưu. Chưa quy đổi được mã trước: {last_error}"
             _emit(on_progress, step="invite", detail=note)
             return own, note
-        if on_redeem is not None:
-            on_redeem(prior)
     elif not prior:
         _emit(on_progress, step="invite", detail="Tài khoản đầu chuỗi, không nhập mã mời")
     return own, ""
