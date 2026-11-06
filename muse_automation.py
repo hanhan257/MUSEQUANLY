@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import random
 import re
@@ -432,46 +431,6 @@ MENU_BTN = re.compile(r"^Menu$|^Open menu$|^Mở menu$|^Điều hướng$", re.I
 VERIFY_BTN = re.compile(r"^XÁC MINH$|^VERIFY$", re.I)
 _signup_turn_lock = threading.Lock()
 _next_signup_at = 0.0
-
-
-def _read_exit_country(page: Page) -> tuple[str, str]:
-    last_error = "không mở được trang kiểm tra IP"
-    for url in ("https://api.country.is/", "https://ipwho.is/"):
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            raw = page.locator("body").inner_text(timeout=10000).strip()
-            data = json.loads(raw)
-        except Exception as exc:
-            last_error = str(exc).split("\n", 1)[0][:160]
-            continue
-        country = str(data.get("country") or data.get("country_code") or "").upper()
-        ip = str(data.get("ip") or "")
-        if country:
-            return country, ip
-    raise RuntimeError(f"Không đọc được IP của Chrome, chưa tạo mail và chưa tạo tài khoản. {last_error}")
-
-
-def _require_us_exit(page: Page, on_progress: ProgressCallback | None, *, using_proxy: bool) -> str:
-    """IP ra của chính Chrome này phải là Mỹ rồi mới tạo mail và tài khoản."""
-    _emit(on_progress, step="ip", detail="Chrome mới đã mở. Đang kiểm tra IP ra có phải Mỹ…")
-    country, ip = _read_exit_country(page)
-    if country != "US":
-        where = country or "không rõ"
-        if ip:
-            where = f"{where} {ip}"
-        if using_proxy:
-            raise RuntimeError(f"Dòng proxy ra IP {where}, không phải Mỹ. Chưa tạo mail và chưa tạo tài khoản.")
-        raise RuntimeError(f"Chrome đang ra IP {where}, không phải Mỹ. Cần proxy US rồi mới tạo tài khoản.")
-    shown = ip or "US"
-    if using_proxy:
-        _emit(
-            on_progress,
-            step="ip",
-            detail=f"Proxy OK · IP Mỹ {shown}. Tạo mail và đăng nhập lại trước khi vào Muse.",
-        )
-    else:
-        _emit(on_progress, step="ip", detail=f"IP Mỹ {shown}. Tạo mail và đăng nhập lại trước khi vào Muse.")
-    return ip
 
 
 def _wait_signup_turn(on_progress: ProgressCallback | None) -> None:
@@ -2360,8 +2319,6 @@ def _ack_disclosure(page: Page, on_progress: ProgressCallback | None) -> None:
 def _resolve_after_birthday(
     page: Page,
     on_progress: ProgressCallback | None,
-    *,
-    verified_us_ip: str = "",
 ) -> None:
     for tick in range(60):
         if stop_requested():
@@ -2369,10 +2326,9 @@ def _resolve_after_birthday(
         if _text_visible(page, SIGNUP_BLOCKED):
             page.wait_for_timeout(2000)
             if _text_visible(page, SIGNUP_BLOCKED):
-                ip_note = f" IP Mỹ {verified_us_ip} đã OK." if verified_us_ip else ""
                 raise RuntimeError(
                     "Muse chặn tạo tài khoản mới (You can't create a new account right now)."
-                    f"{ip_note} Không phải lỗi mail — thử proxy US khác hoặc tạo 1 TK/lần."
+                    " Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần."
                 )
         if _card_form_visible(page):
             _emit(on_progress, step="card", detail="Thấy trang thẻ, lấy thẻ trong kho để điền")
@@ -2397,7 +2353,7 @@ def create_muse_account(
     on_invite: Callable[[str | None], None] | None = None,
     prepare_mail: Callable[[], tuple[str, str, str | None]] | None = None,
 ) -> LoginProgress:
-    """Chrome mới, nhận proxy và chỉ tạo tài khoản khi IP ra là Mỹ. Mail tạo sau bước đó."""
+    """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
     from tempmail_plus_client import TempMailPlusError, wait_for_code
 
     try:
@@ -2432,9 +2388,7 @@ def create_muse_account(
             pass
         page = context.new_page()
         page.set_default_timeout(20000)
-        verified_us_ip = ""
         try:
-            verified_us_ip = _require_us_exit(page, on_progress, using_proxy=bool(proxy_cfg))
             if prepare_mail is not None:
                 email, mail_token, prepared_password = prepare_mail()
                 if prepared_password:
@@ -2529,7 +2483,7 @@ def create_muse_account(
                 _emit(on_progress, step="name", detail=f"Đã điền tên {person['full']}")
             _emit(on_progress, step="birthday", detail=f"Điền ngày sinh {birthday['label']}")
             _fill_birthday(page, person, birthday)
-            _resolve_after_birthday(page, on_progress, verified_us_ip=verified_us_ip)
+            _resolve_after_birthday(page, on_progress)
             own_invite, invite_note = _chain_invites(page, email, on_progress, take_prior, on_invite, context)
             if not own_invite:
                 raise RuntimeError("Chưa trích xuất được mã giới thiệu vào tool")
