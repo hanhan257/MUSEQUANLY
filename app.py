@@ -78,7 +78,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v83"
+APP_BUILD = "signup-v84"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1852,6 +1852,11 @@ def api_cookies_vault():
                 "muse_token": token,
                 "account_status": rec.get("account_status") or "",
                 "login_error": rec.get("login_error") or "",
+                "token_used_pct": rec.get("token_used_pct") or "",
+                "token_left": rec.get("token_left") or "",
+                "token_reset": rec.get("token_reset") or "",
+                "token_checked_at": rec.get("token_checked_at") or "",
+                "token_error": rec.get("token_error") or "",
             }
         )
     return jsonify(
