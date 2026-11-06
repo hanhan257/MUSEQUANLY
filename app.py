@@ -29,6 +29,7 @@ from muse_automation import (
     login_muse,
     normalize_proxy_line,
     request_stop,
+    set_signup_turn_gap,
     stop_requested,
 )
 from warehouse_store import (
@@ -66,12 +67,13 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v69"
+APP_BUILD = "signup-v70"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
 BATCH_PARALLEL = 5
 PROXY_PARALLEL = 5
+MAX_WORKERS = 20
 
 ensure_initialized()
 
@@ -682,12 +684,12 @@ class _InviteChain:
         return tail
 
 
-def _signup_workers(count: int, proxy_count: int) -> int:
+def _signup_workers(count: int, proxy_count: int, cap: int = BATCH_PARALLEL) -> int:
     if count <= 1:
         return 1
     if proxy_count:
-        return min(count, proxy_count, PROXY_PARALLEL)
-    return min(count, BATCH_PARALLEL)
+        return min(count, proxy_count, cap)
+    return min(count, cap)
 
 
 def _signup_one(
@@ -953,20 +955,22 @@ def _run_signup_lane(
         return
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5) -> None:
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL) -> None:
     clear_stop()
     proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
     seed = (seed or "").strip().upper()
     per_proxy = max(1, min(50, int(per_proxy or 5)))
+    max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
+    set_signup_turn_gap(5 if max_workers > 5 else 20)
     if proxies:
         count = min(count, len(proxies) * per_proxy)
     state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
     state_lock = threading.Lock()
     if proxies:
-        workers = min(len(proxies), PROXY_PARALLEL)
+        workers = min(len(proxies), max_workers)
         via = f" · {len(proxies)} proxy × {per_proxy} TK/proxy"
     else:
-        workers = _signup_workers(count, 0)
+        workers = _signup_workers(count, 0, max_workers)
         via = ""
     seed_note = f" · mã mời {seed} cho TK đầu" if seed else ""
     _set_job(
@@ -1180,13 +1184,18 @@ def api_signup():
     except (TypeError, ValueError):
         per_proxy = 5
     per_proxy = max(1, min(50, per_proxy))
+    try:
+        max_workers = int(body.get("max_workers") or BATCH_PARALLEL)
+    except (TypeError, ValueError):
+        max_workers = BATCH_PARALLEL
+    max_workers = max(1, min(MAX_WORKERS, max_workers))
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
     if proxies:
         count = min(count, len(proxies) * per_proxy)
     proxies = proxies[:count]
     job_id = uuid.uuid4().hex[:12]
-    workers = min(len(proxies), PROXY_PARALLEL) if proxies else _signup_workers(count, 0)
+    workers = min(len(proxies), max_workers) if proxies else _signup_workers(count, 0, max_workers)
     _set_job(
         job_id,
         {
@@ -1196,9 +1205,9 @@ def api_signup():
             "total": count,
         },
     )
-    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy), daemon=True)
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), daemon=True)
     thread.start()
-    return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy})
+    return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy, "max_workers": max_workers})
 
 
 @app.post("/api/login")

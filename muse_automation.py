@@ -402,7 +402,7 @@ MAIL_FLAGGED = re.compile(
 )
 CARD_PAGE = re.compile(r"Xác nhận tuổi của bạn|Confirm your age", re.I)
 CARD_BAD = re.compile(
-    r"thẻ không hợp lệ|thẻ bị từ chối|thẻ này không|không thể xác minh|không thể xử lý thẻ|thẻ đã bị|invalid card|card (?:was )?declined|incorrect card|try another card|card number is invalid",
+    r"thẻ không hợp lệ|thẻ bị từ chối|thẻ này không|không thể xác minh|không thể xử lý thẻ|thẻ đã bị|invalid card|card (?:was )?declined|incorrect card|try another card|card number is invalid|unable to add card|too many ad accounts|associated with too many|select a different payment method",
     re.I,
 )
 CARD_BUSY = re.compile(r"too many attempts|too many failed|quá nhiều lần|thử lại sau", re.I)
@@ -430,17 +430,24 @@ MENU_BTN = re.compile(r"^Menu$|^Open menu$|^Mở menu$|^Điều hướng$", re.I
 VERIFY_BTN = re.compile(r"^XÁC MINH$|^VERIFY$", re.I)
 _signup_turn_lock = threading.Lock()
 _next_signup_at = 0.0
+_SIGNUP_TURN_GAP = 20.0
+
+
+def set_signup_turn_gap(seconds: float) -> None:
+    """Khoang cach giua cac lan mo Chrome. Dong nho thi 20 giay; dong lon (nhieu luong) thi 5 giay de lan cuoi khong phai cho lau."""
+    global _SIGNUP_TURN_GAP
+    _SIGNUP_TURN_GAP = max(1.0, float(seconds or 20))
 
 
 def _wait_signup_turn(on_progress: ProgressCallback | None) -> None:
-    """Mỗi tài khoản cách nhau 20 giây lúc mở Chrome, tránh đụng Muse cùng một lúc."""
+    """Mỗi tài khoản cách nhau một khoảng lúc mở Chrome, tránh đụng Muse cùng một lúc."""
     global _next_signup_at
     with _signup_turn_lock:
         now = time.monotonic()
         delay = _next_signup_at - now
         if delay < 0:
             delay = 0
-        _next_signup_at = now + delay + 20
+        _next_signup_at = now + delay + _SIGNUP_TURN_GAP
     if delay >= 1:
         _emit(on_progress, step="starting", detail="Chờ lượt tạo, không mở nhiều tài khoản cùng lúc")
         time.sleep(delay)
@@ -1885,58 +1892,120 @@ def _fill_age_card(page: Page, card: dict) -> None:
     _type_field(zip_field, CARD_ZIP)
 
 
-def _submit_age_card(page: Page, on_progress: ProgressCallback | None) -> None:
-    """Điền thẻ trong kho. Muse báo lỗi thì đánh dấu kho đó và sang kho kế tiếp."""
-    from warehouse_store import mark_card_warehouse_bad, usable_card_warehouses
+_CARD_LOCK = threading.Lock()
+_CARD_INFLIGHT: dict[str, int] = {}
 
-    cards = usable_card_warehouses()
-    if not cards:
-        raise RuntimeError("Đã tới bước thẻ nhưng kho thẻ đang trống")
-    for card in cards:
-        if stop_requested():
-            raise RuntimeError("Đã dừng")
-        if not _card_form_visible(page):
-            return
-        last4 = (card.get("number") or "")[-4:]
-        _emit(on_progress, step="card", detail=f"Lấy {card.get('name')} trong kho thẻ · ****{last4}")
-        _fill_age_card(page, card)
-        if not _click_enabled_button(page, CARD_CONFIRM):
-            raise RuntimeError(f"Đã điền {card.get('name')} nhưng chưa bấm được Xác nhận")
-        failed = False
-        for tick in range(40):
-            if stop_requested():
-                raise RuntimeError("Đã dừng")
-            if _text_visible(page, DISCLOSURE_PAGE) or "access/disclosure" in (page.url or ""):
-                _emit(on_progress, step="card", detail=f"Đã qua bước thẻ bằng {card.get('name')}")
-                _ack_disclosure(page, on_progress)
-                return
+
+def _reserve_card() -> dict | None:
+    """Lay the it dung nhat trong kho the de dung ngay (xoay vong co khoa).
+    Chon kho theo (luot da dung + luot dang chay) thap nhat: 20 luong / 4 kho thi moi kho nhan ~5 luong, khong don het vao 1 the.
+    Tra None khi khong con the nao dung duoc (het, loi, hoac da du 10 luot)."""
+    from warehouse_store import usable_card_warehouses
+
+    with _CARD_LOCK:
+        cards = usable_card_warehouses()
+        if not cards:
+            return None
+        cards.sort(
+            key=lambda c: (
+                int(c.get("uses") or 0) + _CARD_INFLIGHT.get(c.get("id") or "", 0),
+                c.get("name") or "",
+            )
+        )
+        card = cards[0]
+        cid = card.get("id") or ""
+        _CARD_INFLIGHT[cid] = _CARD_INFLIGHT.get(cid, 0) + 1
+        return card
+
+
+def _release_card(card_id: str, success: bool) -> dict | None:
+    """Tra luot dang chay cua the. Thanh cong thi +1 luot dung (du 10 luot thi khoa kho, tra ve thong tin kho sau khi cap nhat)."""
+    from warehouse_store import bump_card_warehouse_use
+
+    with _CARD_LOCK:
+        if card_id in _CARD_INFLIGHT:
+            _CARD_INFLIGHT[card_id] = max(0, _CARD_INFLIGHT[card_id] - 1)
+    if success and card_id:
+        return bump_card_warehouse_use(card_id)
+    return None
+
+
+def _submit_age_card(page: Page, on_progress: ProgressCallback | None) -> None:
+    """Điền thẻ trong kho, xoay vòng có khóa giữa các luồng.
+    Thẻ nào Muse báo lỗi thì khóa kho đó và sang thẻ tiếp theo ngay; thẻ nào đủ 10 lượt dùng thành công thì khóa kho.
+    Hết thẻ dùng được thì báo lỗi để tài khoản dừng lại thay vì cứ thử thẻ chết."""
+    from warehouse_store import mark_card_warehouse_bad
+
+    while True:
+        card = _reserve_card()
+        if card is None:
+            raise RuntimeError("Kho thẻ đã hết: các thẻ đều bị Muse báo lỗi hoặc đã đủ 10 lượt")
+        cid = card.get("id") or ""
+        settled = False
+        try:
             if not _card_form_visible(page):
-                _emit(on_progress, step="card", detail=f"Đã qua bước thẻ bằng {card.get('name')}")
-                _ack_disclosure(page, on_progress)
+                settled = True
+                _release_card(cid, success=False)
                 return
-            if _text_visible(page, CARD_BUSY):
-                _click_named_button(page, re.compile(r"^OK$|^Đồng ý$"))
-                raise RuntimeError(
-                    f"Muse báo quá nhiều lần thử với {card.get('name')} · ****{last4}. Thẻ vẫn giữ trong kho, chờ rồi tạo lại, không bấm Xác nhận tiếp."
-                )
-            if _text_visible(page, CARD_BAD):
-                failed = True
-                break
-            if tick in (8, 16, 24, 32):
-                number_field = _placeholder_input(page, re.compile(r"số thẻ|card number|cc-number|cardnumber", re.I))
-                digits = _field_digits(number_field) if number_field is not None else ""
-                if last4 and last4 not in digits:
-                    _emit(on_progress, step="card", detail=f"Trang làm mất số thẻ, điền lại {card.get('name')}")
-                    _fill_age_card(page, card)
-                else:
-                    _emit(on_progress, step="card", detail="Trang thẻ chưa chuyển, bấm lại Xác nhận")
-                _click_enabled_button(page, CARD_CONFIRM)
-            page.wait_for_timeout(750)
-        if not failed:
-            raise RuntimeError(f"Đã điền {card.get('name')} nhưng trang xác nhận tuổi chưa chuyển")
-        mark_card_warehouse_bad(card.get("id") or "")
-        _emit(on_progress, step="card", detail=f"{card.get('name')} bị Muse báo lỗi, chuyển thẻ kho tiếp theo")
-    raise RuntimeError("Các thẻ trong kho đều bị Muse báo lỗi")
+            last4 = (card.get("number") or "")[-4:]
+            _emit(on_progress, step="card", detail=f"Lấy {card.get('name')} trong kho thẻ · ****{last4}")
+            _fill_age_card(page, card)
+            if not _click_enabled_button(page, CARD_CONFIRM):
+                raise RuntimeError(f"Đã điền {card.get('name')} nhưng chưa bấm được Xác nhận")
+            failed = False
+            for tick in range(40):
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                if _text_visible(page, DISCLOSURE_PAGE) or "access/disclosure" in (page.url or ""):
+                    done = _release_card(cid, success=True)
+                    settled = True
+                    locked_note = (
+                        f" · {card.get('name')} đã đủ 10 lượt, khóa kho"
+                        if done and done.get("status") == "used"
+                        else ""
+                    )
+                    _emit(on_progress, step="card", detail=f"Đã qua bước thẻ bằng {card.get('name')}" + locked_note)
+                    _ack_disclosure(page, on_progress)
+                    return
+                if not _card_form_visible(page):
+                    done = _release_card(cid, success=True)
+                    settled = True
+                    locked_note = (
+                        f" · {card.get('name')} đã đủ 10 lượt, khóa kho"
+                        if done and done.get("status") == "used"
+                        else ""
+                    )
+                    _emit(on_progress, step="card", detail=f"Đã qua bước thẻ bằng {card.get('name')}" + locked_note)
+                    _ack_disclosure(page, on_progress)
+                    return
+                if _text_visible(page, CARD_BUSY):
+                    _click_named_button(page, re.compile(r"^OK$|^Đồng ý$"))
+                    raise RuntimeError(
+                        f"Muse báo quá nhiều lần thử với {card.get('name')} · ****{last4}. Thẻ vẫn giữ trong kho, chờ rồi tạo lại, không bấm Xác nhận tiếp."
+                    )
+                if _text_visible(page, CARD_BAD):
+                    _click_named_button(page, re.compile(r"^OK$|^Đồng ý$"))
+                    failed = True
+                    break
+                if tick in (8, 16, 24, 32):
+                    number_field = _placeholder_input(page, re.compile(r"số thẻ|card number|cc-number|cardnumber", re.I))
+                    digits = _field_digits(number_field) if number_field is not None else ""
+                    if last4 and last4 not in digits:
+                        _emit(on_progress, step="card", detail=f"Trang làm mất số thẻ, điền lại {card.get('name')}")
+                        _fill_age_card(page, card)
+                    else:
+                        _emit(on_progress, step="card", detail="Trang thẻ chưa chuyển, bấm lại Xác nhận")
+                    _click_enabled_button(page, CARD_CONFIRM)
+                page.wait_for_timeout(750)
+            if not failed:
+                raise RuntimeError(f"Đã điền {card.get('name')} nhưng trang xác nhận tuổi chưa chuyển")
+            mark_card_warehouse_bad(cid)
+            settled = True
+            _release_card(cid, success=False)
+            _emit(on_progress, step="card", detail=f"{card.get('name')} bị Muse báo lỗi, khóa kho và chuyển thẻ tiếp theo")
+        finally:
+            if not settled:
+                _release_card(cid, success=False)
 
 
 def _click_label(page: Page, pattern: re.Pattern[str]) -> bool:

@@ -306,7 +306,7 @@
             <button type="button" class="btn-primary" data-signup-count="1">1 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="5">5 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="10">10 TK</button>
-            <button type="button" class="btn-ghost" data-signup-count="50">50 TK · 5 luồng</button>
+            <button type="button" class="btn-ghost" data-signup-count="50">50 TK</button>
             <label class="check-inline">Số TK
               <input type="number" id="signupCustomCount" value="3" min="1" max="200" style="width:4.2rem;" />
             </label>
@@ -324,7 +324,7 @@
         </div>
         <div class="created-kho" id="createdKhoList"></div>
         <div class="signup-proxy">
-          <label for="signupProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa 5 làn. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
+          <label for="signupProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa số luồng ở ô Số luồng. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
           <textarea id="signupProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
         </div>
         <div class="signup-proxy">
@@ -332,6 +332,8 @@
           <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
           <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. 3 proxy × 5 TK thì tối đa 15 tài khoản.</label>
           <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
+          <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
+          <input type="number" id="signupMaxWorkers" value="5" min="1" max="20" style="width:4.2rem;" />
         </div>
         <div class="panel">
           <div id="signupStatus" class="login-status"></div>
@@ -343,7 +345,7 @@
         <div class="top">
           <div>
             <h2>Kho thẻ</h2>
-            <div class="meta">Mỗi kho một thẻ. Bạn nhập số thẻ, MM/YY và CVV. ZIP tự điền 06779. Muse báo thẻ lỗi thì sang kho tiếp theo.</div>
+            <div class="meta">Mỗi kho một thẻ. Bạn nhập số thẻ, MM/YY và CVV (gõ 11/2029 tự đổi thành 11/29). ZIP tự điền 06779. Thẻ đủ 10 lượt dùng thành công hoặc bị Muse báo lỗi thì khóa kho, tool tự chuyển sang thẻ khác.</div>
           </div>
         </div>
         <div class="toolbar" style="margin-bottom:0.75rem;">
@@ -1103,14 +1105,15 @@
       }
       root.innerHTML = `
         <table>
-          <thead><tr><th>Kho</th><th>Số thẻ</th><th>Ngày</th><th>CVV</th><th>Trạng thái</th><th></th></tr></thead>
+          <thead><tr><th>Kho</th><th>Số thẻ</th><th>Ngày</th><th>CVV</th><th>Lượt</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody>
             ${rows.map(card => `<tr>
               <td>${escapeHtml(card.name)}</td>
               <td class="email">${escapeHtml(card.number)}</td>
               <td>${escapeHtml(card.expiry)}</td>
               <td>${escapeHtml(card.cvv)}</td>
-              <td class="hint">${card.status === 'error' ? 'Thẻ lỗi' : 'Sẵn sàng'}</td>
+              <td>${card.uses || 0}/${card.use_limit || 10}</td>
+              <td class="hint">${card.status === 'error' ? 'Thẻ lỗi' : card.status === 'used' ? 'Đã đủ 10 lượt' : 'Sẵn sàng'}</td>
               <td><button type="button" class="btn-ghost btn-sm" data-delete-card="${card.id}">Xóa</button></td>
             </tr>`).join('')}
           </tbody>
@@ -1138,6 +1141,10 @@
       viewMode = 'cards';
       applyView();
       await loadCards();
+    });
+    document.getElementById('cardExpiry').addEventListener('blur', function () {
+      const m = this.value.trim().match(/^(\d{2})\/(\d{4})$/);
+      if (m) this.value = m[1] + '/' + m[2].slice(2);
     });
     document.getElementById('btnAddCard').addEventListener('click', async () => {
       const res = await fetch('/api/cards', {
@@ -1177,6 +1184,7 @@
         return;
       }
       const perProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('signupPerProxy').value || '5', 10) || 5));
+      const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('signupMaxWorkers').value || '5', 10) || 5));
       if (proxies.length > 200) {
         setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
         return;
@@ -1185,7 +1193,7 @@
       const used = proxies.slice(0, Math.ceil(count / perProxy));
       setSignupButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
-      const workers = count > 1 ? Math.min(count, 5) : 1;
+      const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
       const lead = mode === 'plain' ? 'Đang tạo mail @mailto.plus, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
@@ -1195,7 +1203,7 @@
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy }),
+        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy, max_workers: maxWorkers }),
       });
       const data = await res.json();
       if (!data.ok) {

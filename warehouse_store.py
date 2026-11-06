@@ -799,14 +799,22 @@ def _card_digits(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
+CARD_USE_LIMIT = 10
+
+
 def _normalize_expiry(value: str) -> str:
+    """Nhan MM/YY (11/29, 1129) hoac MM/YYYY (11/2029, 112029): nam 4 so tu cat ve 2 so."""
     digits = _card_digits(value)
     if len(digits) == 4:
-        month = int(digits[:2])
-        if month < 1 or month > 12:
-            raise ValueError("Ngày thẻ phải là MM/YY")
-        return f"{digits[:2]}/{digits[2:]}"
-    raise ValueError("Ngày thẻ phải là MM/YY")
+        year2 = digits[2:]
+    elif len(digits) == 6:
+        year2 = digits[4:]
+    else:
+        raise ValueError("Ngày thẻ phải là MM/YY hoặc MM/YYYY")
+    month = int(digits[:2])
+    if month < 1 or month > 12:
+        raise ValueError("Ngày thẻ phải là MM/YY")
+    return f"{digits[:2]}/{year2}"
 
 
 def list_card_warehouses() -> dict[str, Any]:
@@ -822,13 +830,19 @@ def list_card_warehouses() -> dict[str, Any]:
                 "expiry": card.get("expiry") or "",
                 "cvv": card.get("cvv") or "",
                 "status": wh.get("status") or "",
+                "uses": int(wh.get("uses") or 0),
+                "use_limit": CARD_USE_LIMIT,
             }
         )
     return {"warehouses": rows}
 
 
 def usable_card_warehouses() -> list[dict[str, Any]]:
-    return [row for row in list_card_warehouses()["warehouses"] if row.get("number") and row.get("status") != "error"]
+    return [
+        row
+        for row in list_card_warehouses()["warehouses"]
+        if row.get("number") and row.get("status") not in ("error", "used") and row.get("uses", 0) < CARD_USE_LIMIT
+    ]
 
 
 def add_card_warehouse(number: str, expiry: str, cvv: str) -> dict[str, Any]:
@@ -853,6 +867,7 @@ def add_card_warehouse(number: str, expiry: str, cvv: str) -> dict[str, Any]:
             "id": _new_id(),
             "name": name,
             "status": "",
+            "uses": 0,
             "card": {"number": pan, "expiry": exp, "cvv": code},
         }
         warehouses.append(wh)
@@ -868,6 +883,29 @@ def mark_card_warehouse_bad(warehouse_id: str) -> None:
                 wh["status"] = "error"
                 _save(data)
                 return
+
+
+def bump_card_warehouse_use(warehouse_id: str, limit: int = CARD_USE_LIMIT) -> dict[str, Any] | None:
+    """Ghi nhan 1 lan dung the thanh cong. Du limit luot thi khoa kho (status 'used') de tool doi sang the khac."""
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        for wh in data.get("card_warehouses") or []:
+            if wh.get("id") == warehouse_id:
+                uses = int(wh.get("uses") or 0) + 1
+                wh["uses"] = uses
+                if uses >= limit:
+                    wh["status"] = "used"
+                _save(data)
+                card = wh.get("card") or {}
+                return {
+                    "id": wh.get("id"),
+                    "name": wh.get("name") or "Kho",
+                    "number": card.get("number") or "",
+                    "status": wh.get("status") or "",
+                    "uses": uses,
+                    "use_limit": limit,
+                }
+        return None
 
 
 def delete_card_warehouse(warehouse_id: str) -> bool:
