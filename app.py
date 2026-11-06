@@ -64,7 +64,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v61"
+APP_BUILD = "signup-v62"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -309,16 +309,16 @@ def api_otp(email: str):
     created = find_created_account(email) or {}
     mailbox_password = (created.get("mailtm_password") or "").strip()
     if mailbox_password:
-        from mailtm_client import MailTmError, latest_code
+        from tempmail_plus_client import TempMailPlusError, latest_code
 
         try:
             code = latest_code(email, mailbox_password)
-        except MailTmError as exc:
+        except TempMailPlusError as exc:
             return jsonify({"code": None, "error": str(exc), "message": None})
         return jsonify({
             "code": code,
             "error": None,
-            "message": {"subject": "mail.tm", "sender": "mail.tm", "date": ""},
+            "message": {"subject": "tempmail.plus", "sender": "tempmail.plus", "date": ""},
         })
     result = get_latest_muse_code(email)
     payload = {
@@ -739,7 +739,7 @@ def _signup_one_run(
     box: dict,
     on_invite,
 ) -> None:
-    from mailtm_client import MailTmError, create_han_mailbox, create_mailbox
+    from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
 
     email = ""
 
@@ -820,7 +820,7 @@ def _signup_one_run(
     def prepare_mail() -> tuple[str, str, str | None]:
         nonlocal email
         if mode == "password":
-            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "fldubai.com")
+            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "mailto.plus")
         else:
             email, password, token = create_mailbox(ACCOUNT_PASSWORD)
         box["email"] = email
@@ -832,7 +832,7 @@ def _signup_one_run(
         )
         with state_lock:
             state["running"].append(email)
-        publish(f"Đã lưu {email}. Mail đăng nhập lại được." if count == 1 else None)
+        publish(f"Đã lưu {email}. Hộp thư đọc lại được." if count == 1 else None)
         return email, token, password if mode == "password" else None
 
     try:
@@ -938,7 +938,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
 
 
 def _run_signup_job(job_id: str, mode: str = "random") -> None:
-    from mailtm_client import MailTmError, create_han_mailbox, create_mailbox
+    from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
 
     def on_progress(p: LoginProgress) -> None:
         _set_job(
@@ -958,7 +958,7 @@ def _run_signup_job(job_id: str, mode: str = "random") -> None:
 
     def prepare_mail() -> tuple[str, str, str | None]:
         if with_password:
-            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "fldubai.com")
+            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "mailto.plus")
         else:
             email, password, token = create_mailbox(ACCOUNT_PASSWORD)
         holder["email"] = email
@@ -973,7 +973,7 @@ def _run_signup_job(job_id: str, mode: str = "random") -> None:
                 "status": "running",
                 "step": "mail_saved",
                 "email": email,
-                "detail": f"Đã lưu {email}. Mail đăng nhập lại được. Bắt đầu tạo tài khoản.",
+                "detail": f"Đã lưu {email}. Hộp thư đọc lại được. Bắt đầu tạo tài khoản.",
             },
         )
         return email, token, password if with_password else None
@@ -1265,6 +1265,7 @@ def _watch_files() -> list[str]:
         "muse_automation.py",
         "lay2fa_client.py",
         "mailtm_client.py",
+        "tempmail_plus_client.py",
     ):
         p = BUNDLE_DIR / name
         if p.is_file():
