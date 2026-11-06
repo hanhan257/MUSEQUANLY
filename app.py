@@ -73,7 +73,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v74"
+APP_BUILD = "signup-v75"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1533,6 +1533,19 @@ def api_created_warehouses_create():
     kind = "password" if body.get("kind") == "password" else "plain"
     wh = create_created_warehouse(kind, body.get("name"))
     return jsonify({"ok": True, "warehouse": {"id": wh.get("id"), "name": wh.get("name"), "kind": kind}, **list_created_accounts(wh.get("id"), kind)})
+
+
+@app.post("/api/created/accounts/delete")
+def api_created_accounts_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    email = (body.get("email") or "").strip()
+    kind = body.get("kind") or "plain"
+    warehouse_id = (body.get("warehouse_id") or "").strip() or None
+    if not email:
+        return jsonify({"ok": False, "error": "Chưa chọn tài khoản"}), 400
+    if not delete_created_account(email):
+        return jsonify({"ok": False, "error": "Không thấy tài khoản"}), 404
+    return jsonify({"ok": True, **list_created_accounts(warehouse_id, kind)})
 
 
 @app.post("/api/created/warehouses/delete")

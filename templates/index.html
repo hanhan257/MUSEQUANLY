@@ -1017,6 +1017,7 @@
                   <button type="button" class="btn-ghost btn-sm" data-created-login="${encodeURIComponent(a.email)}">Đăng nhập</button>
                   <button type="button" class="btn-ghost btn-sm" data-created-copy="${encodeURIComponent(a.email)}" ${a.has_cookie ? '' : 'disabled'}>Copy</button>
                   <button type="button" class="btn-ghost btn-sm" data-created-otp="${encodeURIComponent(a.email)}">Mã mail</button>
+                  <button type="button" class="btn-ghost btn-sm" data-created-delete="${encodeURIComponent(a.email)}">Xóa</button>
                 </div>
               </td>
             </tr>`;
@@ -1060,6 +1061,9 @@
       });
       root.querySelectorAll('[data-created-otp]').forEach(btn => {
         btn.addEventListener('click', () => fetchCreatedOtp(btn.dataset.createdOtp));
+      });
+      root.querySelectorAll('[data-created-delete]').forEach(btn => {
+        btn.addEventListener('click', () => deleteCreatedAccount(btn.dataset.createdDelete));
       });
     }
 
@@ -1454,6 +1458,22 @@
           await loadCreated();
         }
       }, 1500);
+    }
+    async function deleteCreatedAccount(email) {
+      const address = decodeURIComponent(email);
+      if (!confirm(`Xóa ${address}? Tài khoản và cookie của nó cũng bị xóa khỏi kho.`)) return;
+      const active = (createdBoard.warehouses || []).find(w => w.active);
+      const res = await fetch('/api/created/accounts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: address, warehouse_id: active ? active.id : null, kind: viewMode === 'password' ? 'password' : 'plain' }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      createdBoard = data;
+      createdAccounts = data.accounts || [];
+      renderCreated();
+      toast(`Đã xóa ${address}`);
     }
     function createdCookieLines() {
       return createdAccounts
