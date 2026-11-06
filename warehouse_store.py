@@ -1014,3 +1014,19 @@ def delete_card_warehouse(warehouse_id: str) -> bool:
         data["card_warehouses"] = kept
         _save(data)
         return True
+
+
+def delete_card_warehouses(ids: list[str]) -> int:
+    """Xóa nhiều kho thẻ một lúc (ví dụ: lọc thẻ lỗi rồi xóa hết). Trả số kho đã xóa."""
+    wanted = {(item or "").strip() for item in ids or [] if (item or "").strip()}
+    if not wanted:
+        return 0
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        rows = data.get("card_warehouses") or []
+        kept = [wh for wh in rows if (wh.get("id") or "") not in wanted]
+        removed = len(rows) - len(kept)
+        if removed:
+            data["card_warehouses"] = kept
+            _save(data)
+        return removed

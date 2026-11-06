@@ -93,6 +93,7 @@
     .created-kho .kho-row { display: inline-flex; }
     .side-actions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0; }
     .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
+    #cardFilterBar .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
     .created-kho { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
     .signup-proxy { margin-bottom: 0.75rem; }
     .signup-proxy label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
@@ -360,6 +361,13 @@
           <input id="cardExpiry" placeholder="MM/YY" autocomplete="off" style="width:6.2rem;" />
           <input id="cardCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="width:5.2rem;" />
           <button type="button" class="btn-primary" id="btnAddCard">Thêm thẻ</button>
+        </div>
+        <div class="toolbar" id="cardFilterBar" style="margin-bottom:0.75rem;">
+          <button type="button" class="btn-ghost btn-sm" data-card-filter="all">Tất cả</button>
+          <button type="button" class="btn-ghost btn-sm" data-card-filter="ready">Sẵn sàng</button>
+          <button type="button" class="btn-ghost btn-sm" data-card-filter="used">Đã đủ 10 lượt</button>
+          <button type="button" class="btn-ghost btn-sm" data-card-filter="error">Thẻ lỗi</button>
+          <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedCards" disabled>Xóa đã chọn</button>
         </div>
         <div class="panel"><div id="cardTable"></div></div>
       </div>
@@ -1160,32 +1168,102 @@
       applyView();
       await loadCreated();
     });
+    let cardFilter = 'all';
+    let cardSelected = new Set();
+    let cardRows = [];
+    function cardStatus(card) {
+      return card.status === 'error' ? 'error' : card.status === 'used' ? 'used' : 'ready';
+    }
     function renderCards(data) {
-      const rows = data.warehouses || [];
+      cardRows = data.warehouses || [];
+      const ids = new Set(cardRows.map(c => c.id));
+      cardSelected.forEach(id => { if (!ids.has(id)) cardSelected.delete(id); });
+      const counts = { all: cardRows.length, ready: 0, used: 0, error: 0 };
+      cardRows.forEach(c => { counts[cardStatus(c)]++; });
+      document.querySelectorAll('#cardFilterBar [data-card-filter]').forEach(btn => {
+        const key = btn.dataset.cardFilter;
+        btn.classList.toggle('active', cardFilter === key);
+        btn.textContent = (key === 'all' ? 'Tất cả' : key === 'ready' ? 'Sẵn sàng' : key === 'used' ? 'Đã đủ 10 lượt' : 'Thẻ lỗi') + ` (${counts[key]})`;
+      });
+      const rows = cardRows.filter(c => cardFilter === 'all' || cardStatus(c) === cardFilter);
       const root = document.getElementById('cardTable');
       if (!rows.length) {
-        root.innerHTML = '<div class="empty">Chưa có thẻ. Nhập số thẻ, MM/YY, CVV rồi bấm Thêm thẻ.</div>';
-        return;
+        root.innerHTML = '<div class="empty">' + (cardRows.length ? 'Không có thẻ nào khớp bộ lọc.' : 'Chưa có thẻ. Nhập số thẻ, MM/YY, CVV rồi bấm Thêm thẻ.') + '</div>';
+      } else {
+        root.innerHTML = `
+          <table>
+            <thead><tr><th class="check"><input type="checkbox" id="cardCheckAll" title="Chọn tất cả thẻ đang lọc" /></th><th>Kho</th><th>Số thẻ</th><th>Ngày</th><th>CVV</th><th>Lượt</th><th>Trạng thái</th><th></th></tr></thead>
+            <tbody>
+              ${rows.map(card => {
+                const st = cardStatus(card);
+                const badge = st === 'error'
+                  ? '<span class="badge die">Thẻ lỗi</span>'
+                  : st === 'used'
+                    ? '<span class="badge die">Đã đủ 10 lượt</span>'
+                    : '<span class="badge live">Sẵn sàng</span>';
+                return `<tr>
+                <td class="check"><input type="checkbox" class="card-check" data-card-check="${card.id}" ${cardSelected.has(card.id) ? 'checked' : ''} /></td>
+                <td>${escapeHtml(card.name)}</td>
+                <td class="email">${escapeHtml(card.number)}</td>
+                <td>${escapeHtml(card.expiry)}</td>
+                <td>${escapeHtml(card.cvv)}</td>
+                <td>${card.uses || 0}/${card.use_limit || 10}</td>
+                <td>${badge}</td>
+                <td><button type="button" class="btn-ghost btn-sm" data-delete-card="${card.id}">Xóa</button></td>
+              </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`;
       }
-      root.innerHTML = `
-        <table>
-          <thead><tr><th>Kho</th><th>Số thẻ</th><th>Ngày</th><th>CVV</th><th>Lượt</th><th>Trạng thái</th><th></th></tr></thead>
-          <tbody>
-            ${rows.map(card => `<tr>
-              <td>${escapeHtml(card.name)}</td>
-              <td class="email">${escapeHtml(card.number)}</td>
-              <td>${escapeHtml(card.expiry)}</td>
-              <td>${escapeHtml(card.cvv)}</td>
-              <td>${card.uses || 0}/${card.use_limit || 10}</td>
-              <td class="hint">${card.status === 'error' ? 'Thẻ lỗi' : card.status === 'used' ? 'Đã đủ 10 lượt' : 'Sẵn sàng'}</td>
-              <td><button type="button" class="btn-ghost btn-sm" data-delete-card="${card.id}">Xóa</button></td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`;
+      const checkAll = document.getElementById('cardCheckAll');
+      if (checkAll) {
+        const selected = rows.filter(c => cardSelected.has(c.id)).length;
+        checkAll.checked = rows.length > 0 && selected === rows.length;
+        checkAll.indeterminate = selected > 0 && selected < rows.length;
+        checkAll.addEventListener('change', () => {
+          rows.forEach(c => {
+            if (checkAll.checked) cardSelected.add(c.id);
+            else cardSelected.delete(c.id);
+          });
+          renderCards({ warehouses: cardRows });
+        });
+      }
+      root.querySelectorAll('.card-check').forEach(box => {
+        box.addEventListener('change', () => {
+          if (box.checked) cardSelected.add(box.dataset.cardCheck);
+          else cardSelected.delete(box.dataset.cardCheck);
+          renderCards({ warehouses: cardRows });
+        });
+      });
       root.querySelectorAll('[data-delete-card]').forEach(btn => {
         btn.addEventListener('click', () => deleteCard(btn.dataset.deleteCard));
       });
+      const delBtn = document.getElementById('btnDeleteSelectedCards');
+      delBtn.disabled = cardSelected.size === 0;
+      delBtn.textContent = cardSelected.size ? `Xóa đã chọn (${cardSelected.size})` : 'Xóa đã chọn';
     }
+    async function deleteSelectedCards() {
+      if (!cardSelected.size) return;
+      const ids = [...cardSelected];
+      if (!confirm(`Xóa ${ids.length} thẻ đã chọn? Thẻ bị xóa khỏi kho, không lấy lại được.`)) return;
+      const res = await fetch('/api/cards/delete-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      cardSelected.clear();
+      renderCards(data);
+      toast(`Đã xóa ${data.removed || ids.length} thẻ`);
+    }
+    document.querySelectorAll('#cardFilterBar [data-card-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        cardFilter = btn.dataset.cardFilter;
+        renderCards({ warehouses: cardRows });
+      });
+    });
+    document.getElementById('btnDeleteSelectedCards').addEventListener('click', deleteSelectedCards);
     async function loadCards() {
       const res = await fetch('/api/cards?t=' + Date.now(), { cache: 'no-store' });
       renderCards(await res.json());

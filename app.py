@@ -40,6 +40,7 @@ from warehouse_store import (
     add_created_account,
     create_created_warehouse,
     delete_card_warehouse,
+    delete_card_warehouses,
     delete_created_account,
     delete_created_warehouse,
     delete_warehouse,
@@ -73,7 +74,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v75"
+APP_BUILD = "signup-v76"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1518,6 +1519,18 @@ def api_cards_delete():
     if not delete_card_warehouse((body.get("id") or "").strip()):
         return jsonify({"ok": False, "error": "Không thấy kho thẻ"}), 404
     return jsonify({"ok": True, **list_card_warehouses()})
+
+
+@app.post("/api/cards/delete-many")
+def api_cards_delete_many():
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "error": "Chưa chọn thẻ."}), 400
+    removed = delete_card_warehouses([str(item) for item in ids])
+    if not removed:
+        return jsonify({"ok": False, "error": "Không thấy thẻ."}), 404
+    return jsonify({"ok": True, "removed": removed, **list_card_warehouses()})
 
 
 @app.get("/api/created")
