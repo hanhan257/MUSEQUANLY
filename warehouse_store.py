@@ -721,6 +721,28 @@ def set_redeemed_invite_code(email: str, code: str) -> None:
                 return
 
 
+def delete_created_account(email: str) -> bool:
+    """Xóa dòng tài khoản đã tạo khỏi kho (kèm cookie của nó). Tài khoản tạo lỗi thì bỏ qua, không lưu vào kho."""
+    key = (email or "").strip().lower()
+    if not key:
+        return False
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        removed = False
+        for wh in data.get("created_warehouses") or []:
+            before = len(wh.get("accounts") or [])
+            wh["accounts"] = [acc for acc in (wh.get("accounts") or []) if (acc.get("email") or "").strip().lower() != key]
+            removed = removed or len(wh["accounts"]) != before
+        before = len(data.get("created_accounts") or [])
+        data["created_accounts"] = [acc for acc in (data.get("created_accounts") or []) if (acc.get("email") or "").strip().lower() != key]
+        removed = removed or len(data["created_accounts"]) != before
+        if removed:
+            _save(data)
+    if removed:
+        delete_account_cookies_many([key])
+    return removed
+
+
 def latest_invite_code() -> str:
     """Mã của tài khoản cuối chuỗi đã tạo xong."""
     data = ensure_initialized()

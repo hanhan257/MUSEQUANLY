@@ -16,7 +16,7 @@ from typing import Callable
 from playwright.sync_api import Page
 
 from cookie_store import cookies_to_header, filter_muse_cookies, get_account_cookies, save_account_cookies, update_account_meta
-from warehouse_store import warehouse_invite_code
+from warehouse_store import set_redeemed_invite_code, warehouse_invite_code
 from lay2fa_client import fetch_2fa_live_code, meta_message_ids, wait_for_new_muse_code
 
 MUSE_URL = "https://muse.ai/"
@@ -2708,6 +2708,95 @@ def _open_usage(page: Page, on_progress: ProgressCallback | None = None) -> str:
             _click_bottom_left_menu(page)
         page.wait_for_timeout(500)
     raise RuntimeError("Đã vào Muse nhưng chưa thấy trang Mức sử dụng")
+
+
+def _load_saved_cookies(email: str) -> list[dict]:
+    """Cookie da luu cua TK (dang Playwright) de mo lai Muse; het thi lay tu cookie_header."""
+    rec = get_account_cookies(email) or {}
+    cookies = [c for c in (rec.get("cookies") or []) if isinstance(c, dict) and c.get("name") and c.get("value")]
+    if not cookies:
+        for part in (rec.get("cookie_header") or "").split(";"):
+            piece = part.strip()
+            if "=" not in piece:
+                continue
+            name, value = piece.split("=", 1)
+            name, value = name.strip(), value.strip()
+            if name and value:
+                cookies.append({"name": name, "value": value, "domain": ".muse.ai", "path": "/"})
+    return cookies
+
+
+def redeem_invite_for_account(
+    email: str,
+    code: str,
+    *,
+    proxy: str | None = None,
+    headless: bool = True,
+    on_progress: ProgressCallback | None = None,
+) -> dict:
+    """Chạy lại quy đổi mã mời cho 1 tài khoản đã tạo: dùng cookie đã lưu mở Muse,
+    vào Cài đặt -> Quy đổi mã lời mời và nhập mã cho trước. Chỉ nhập mã, không tạo tài khoản mới."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        return {"ok": False, "email": email, "error": f"Chưa cài Playwright: {exc}"}
+    code = (code or "").strip().upper()
+    if not code:
+        return {"ok": False, "email": email, "error": "Không có mã để nhập"}
+    cookies = _load_saved_cookies(email)
+    if not cookies:
+        return {"ok": False, "email": email, "error": "Chưa có cookie"}
+    _emit(on_progress, step="invite", detail=f"Quy đổi lại mã {code} cho {email}…")
+    try:
+        with sync_playwright() as p:
+            proxy_cfg = parse_proxy(proxy)
+            try:
+                browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=headless))
+            except Exception as exc:
+                message = str(exc).split("╔", 1)[0].strip()
+                return {"ok": False, "email": email, "error": message or "Không mở được trình duyệt"}
+            try:
+                context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+                context.add_init_script(_HIDE_WEBDRIVER)
+                page = context.new_page()
+                page.set_default_timeout(20000)
+                try:
+                    context.add_cookies(cookies)
+                except Exception:
+                    pass
+                page.goto(MUSE_URL, wait_until="domcontentloaded", timeout=90000)
+                page.wait_for_timeout(1500)
+                if not _muse_app_visible(page):
+                    return {"ok": False, "email": email, "error": "Cookie hết hạn hoặc chưa đăng nhập"}
+                last_error: Exception | None = None
+                redeemed_code = ""
+                try:
+                    _redeem_invite(page, code, on_progress)
+                    redeemed_code = code
+                except Exception as exc:
+                    if stop_requested() or str(exc) == "Đã dừng":
+                        raise
+                    last_error = exc
+                    if _should_retry_redeem(exc):
+                        fallback = warehouse_invite_code(email, exclude_codes=(code,))
+                        if fallback:
+                            try:
+                                _redeem_invite(page, fallback, on_progress)
+                                redeemed_code = fallback
+                            except Exception as exc2:
+                                if stop_requested() or str(exc2) == "Đã dừng":
+                                    raise
+                                last_error = exc2
+                if not redeemed_code:
+                    return {"ok": False, "email": email, "error": str(last_error or "Không quy đổi được mã")}
+                set_redeemed_invite_code(email, redeemed_code)
+                return {"ok": True, "email": email, "code": redeemed_code}
+            finally:
+                browser.close()
+    except Exception as exc:
+        if stop_requested() or str(exc) == "Đã dừng":
+            return {"ok": False, "email": email, "error": "Đã dừng"}
+        return {"ok": False, "email": email, "error": str(exc)}
 
 
 def check_token_usage(

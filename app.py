@@ -29,6 +29,7 @@ from muse_automation import (
     create_muse_account,
     login_muse,
     normalize_proxy_line,
+    redeem_invite_for_account,
     request_stop,
     set_signup_turn_gap,
     stop_requested,
@@ -39,6 +40,7 @@ from warehouse_store import (
     add_created_account,
     create_created_warehouse,
     delete_card_warehouse,
+    delete_created_account,
     delete_created_warehouse,
     delete_warehouse,
     list_card_warehouses,
@@ -71,7 +73,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v73"
+APP_BUILD = "signup-v74"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -781,6 +783,187 @@ def api_batch_tokens():
     return jsonify({"ok": True, "job_id": job_id, "total": len(emails), "workers": BATCH_PARALLEL})
 
 
+def _redeem_targets(accounts: list[dict], kind: str) -> list[dict]:
+    """Tài khoản chưa có Mã đã nhập trong kho: con sau nhập mã của con trước liền kề,
+    con trước không có mã thì lấy mã trong kho. Con chưa có cookie thì bỏ qua."""
+    targets: list[dict] = []
+    for pos, acc in enumerate(accounts):
+        email = (acc.get("email") or "").strip()
+        if not email:
+            continue
+        if (acc.get("redeemed_invite_code") or "").strip():
+            continue
+        if not (acc.get("has_cookie") and acc.get("cookie_header")):
+            targets.append({"email": email, "status": "skipped", "detail": "Chưa có cookie"})
+            continue
+        code = ""
+        if pos > 0:
+            code = (accounts[pos - 1].get("invite_code") or "").strip().upper()
+        if not code:
+            code = warehouse_invite_code(email, kind=kind)
+        if not code:
+            targets.append({"email": email, "status": "skipped", "detail": "Không có mã để nhập"})
+            continue
+        targets.append({"email": email, "status": "pending", "code": code})
+    return targets
+
+
+def _redeem_one(item: dict) -> dict:
+    email = item["email"]
+    if stop_requested():
+        return {"email": email, "status": "stopped", "error": "Đã dừng"}
+    try:
+        creds = _login_creds(email)
+        result = redeem_invite_for_account(email, item["code"], proxy=creds["proxy"], headless=True)
+    except Exception as exc:
+        return {"email": email, "status": "error", "error": str(exc)}
+    if result.get("ok"):
+        return {"email": email, "status": "ok", "code": result.get("code") or ""}
+    return {"email": email, "status": "error", "error": result.get("error") or "Không quy đổi được mã"}
+
+
+def _run_batch_redeem(job_id: str, targets: list[dict]) -> None:
+    total = len(targets)
+    ok_count = 0
+    fail_count = 0
+    skip_count = 0
+    rows: list[dict] = []
+    pending: list[dict] = []
+    running: set[str] = set()
+    state_lock = threading.Lock()
+
+    def publish(detail: str) -> None:
+        if stop_requested():
+            return
+        with state_lock:
+            snapshot = {
+                "status": "running",
+                "total": total,
+                "current": ok_count + fail_count + skip_count,
+                "workers": BATCH_PARALLEL,
+                "running_emails": sorted(running),
+                "detail": detail,
+                "ok": ok_count,
+                "fail": fail_count,
+                "skipped": skip_count,
+                "results": list(rows),
+            }
+        _set_batch(job_id, snapshot)
+
+    try:
+        for item in targets:
+            if item.get("status") == "pending":
+                pending.append(item)
+            else:
+                skip_count += 1
+                rows.append({"email": item["email"], "status": "skipped", "detail": item.get("detail") or "Bỏ qua"})
+        publish(f"Bỏ qua {skip_count} TK · sắp chạy {min(BATCH_PARALLEL, len(pending) or 0)} luồng")
+
+        def run_one(item: dict) -> dict:
+            email = item["email"]
+            if stop_requested():
+                return {"email": email, "status": "stopped", "error": "Đã dừng"}
+            with state_lock:
+                running.add(email)
+                active = sorted(running)
+            publish(f"Đang chạy {len(active)}/{BATCH_PARALLEL} luồng · {', '.join(active)}")
+            try:
+                return _redeem_one(item)
+            finally:
+                with state_lock:
+                    running.discard(email)
+
+        stopped = False
+        if pending:
+            with ThreadPoolExecutor(max_workers=BATCH_PARALLEL) as pool:
+                futures = [pool.submit(run_one, item) for item in pending]
+                for fut in as_completed(futures):
+                    if stop_requested():
+                        stopped = True
+                        break
+                    row = fut.result()
+                    with state_lock:
+                        rows.append(row)
+                        if row.get("status") == "ok":
+                            ok_count += 1
+                        elif row.get("status") != "stopped":
+                            fail_count += 1
+                    publish(
+                        f"Xong {ok_count + fail_count + skip_count}/{total} · còn {len(running)} luồng đang chạy"
+                    )
+                if stopped:
+                    for fut in futures:
+                        fut.cancel()
+        if stopped or stop_requested():
+            _set_batch(
+                job_id,
+                {
+                    "status": "stopped",
+                    "current": ok_count + fail_count + skip_count,
+                    "workers": BATCH_PARALLEL,
+                    "running_emails": [],
+                    "ran": True,
+                    "detail": f"Đã dừng. OK {ok_count}, lỗi {fail_count}, bỏ qua {skip_count}.",
+                    "ok": ok_count,
+                    "fail": fail_count,
+                    "skipped": skip_count,
+                    "results": rows,
+                },
+            )
+            return
+
+        ran = bool(pending)
+        detail = (
+            f"Hoàn tất ({BATCH_PARALLEL} luồng): {ok_count} TK quy đổi được mã, {fail_count} lỗi, {skip_count} bỏ qua."
+            if ran
+            else f"Không chạy TK nào — {skip_count} TK bỏ qua."
+        )
+        _set_batch(
+            job_id,
+            {
+                "status": "done",
+                "current": total,
+                "workers": BATCH_PARALLEL,
+                "running_emails": [],
+                "ran": ran,
+                "detail": detail,
+                "ok": ok_count,
+                "fail": fail_count,
+                "skipped": skip_count,
+                "results": rows,
+            },
+        )
+    except Exception as exc:
+        _set_batch(job_id, {"status": "error", "error": str(exc), "results": rows})
+    finally:
+        _batch_running.clear()
+
+
+@app.post("/api/batch/redeem")
+def api_batch_redeem():
+    if _batch_running.is_set():
+        return jsonify({"ok": False, "error": "Đang chạy batch khác — chờ xong rồi thử lại."}), 409
+
+    body = request.get_json(force=True, silent=True) or {}
+    wh_id = body.get("warehouse_id")
+    kind = body.get("kind") or "plain"
+    if not wh_id:
+        return jsonify({"ok": False, "error": "Chưa chọn kho."}), 400
+    board = list_created_accounts(wh_id, kind)
+    targets = _redeem_targets(board.get("accounts", []), kind)
+    pending = [t for t in targets if t.get("status") == "pending"]
+    if not pending:
+        return jsonify({"ok": False, "error": "Không có tài khoản nào cần chạy lại mã mời (đã nhập đủ hoặc chưa có cookie)."}), 400
+
+    job_id = uuid.uuid4().hex[:12]
+    clear_stop()
+    _batch_running.set()
+    _set_batch(job_id, {"status": "running", "total": len(targets), "emails": [t["email"] for t in targets]})
+    thread = threading.Thread(target=_run_batch_redeem, args=(job_id, targets), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "total": len(targets), "pending": len(pending), "workers": BATCH_PARALLEL})
+
+
 @app.post("/api/batch/stop")
 def api_batch_stop():
     closed = request_stop()
@@ -1056,6 +1239,11 @@ def _signup_one_run(
         ok = False
         error = str(exc)
     if not ok:
+        # Tài khoản tạo lỗi thì bỏ qua, không lưu vào kho.
+        try:
+            delete_created_account(email)
+        except Exception:
+            pass
         note_fail(error or "Không tạo được", closed=True)
         return False
     with state_lock:

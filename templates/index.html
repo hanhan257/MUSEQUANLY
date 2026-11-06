@@ -322,6 +322,7 @@
           <div class="toolbar" id="createdCookieTools">
             <button type="button" class="btn-all" id="btnCreatedCookies">Lấy cookie kho này · 5 luồng</button>
             <button type="button" class="btn-primary" id="btnCreatedTokenCheck">Kiểm tra token tuần</button>
+            <button type="button" class="btn-primary" id="btnCreatedRedeem">Chạy lại mã mời</button>
             <button type="button" class="btn-primary" id="btnCreatedRelogin">Đăng nhập lấy lại cookie</button>
             <button type="button" class="btn-primary" id="btnCreatedCopyCookies">Trích xuất cookie</button>
             <button type="button" class="btn-ghost" id="btnCreatedExportCookies">Xuất TXT</button>
@@ -1421,6 +1422,39 @@
         }
       }, 1500);
     }
+    async function startCreatedRedeem() {
+      if (loginPollTimer || batchPollTimer) {
+        toast('Đang chạy việc khác');
+        return;
+      }
+      const active = (createdBoard.warehouses || []).find(w => w.active);
+      if (!active) {
+        setSignupStatus('Chưa chọn kho.', 'error');
+        return;
+      }
+      setSignupStatus('Chạy lại mã mời cho các TK chưa nhập…', 'running');
+      const res = await fetch('/api/batch/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ warehouse_id: active.id, kind: viewMode === 'password' ? 'password' : 'plain' }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không chạy được', 'error');
+        return;
+      }
+      batchPollTimer = setInterval(async () => {
+        const st = await fetch('/api/batch/' + data.job_id, { cache: 'no-store' }).then(r => r.json());
+        const fresh = st.ok || 0;
+        const kind = st.status === 'error' ? 'error' : (st.status === 'done' || st.status === 'stopped' ? 'done' : 'running');
+        setSignupStatus(st.detail || `Đã quy đổi ${fresh} TK · lỗi ${st.fail || 0}`, kind);
+        if (st.status === 'done' || st.status === 'stopped' || st.status === 'error' || st.status === 'unknown') {
+          clearInterval(batchPollTimer);
+          batchPollTimer = null;
+          await loadCreated();
+        }
+      }, 1500);
+    }
     function createdCookieLines() {
       return createdAccounts
         .filter(a => a.has_cookie && a.cookie_header && !createdExcluded.has(a.email.toLowerCase()))
@@ -1450,6 +1484,7 @@
     document.getElementById('btnCreatedExportCookies').addEventListener('click', exportCreatedCookies);
     document.getElementById('btnCreatedCookies').addEventListener('click', () => startCreatedCookies(false));
     document.getElementById('btnCreatedTokenCheck').addEventListener('click', startCreatedTokenCheck);
+    document.getElementById('btnCreatedRedeem').addEventListener('click', startCreatedRedeem);
     document.getElementById('btnCreatedRelogin').addEventListener('click', () => startCreatedCookies(true));
     document.getElementById('btnNewCreatedKho').addEventListener('click', createCreatedWarehouse);
     document.getElementById('btnCustomSignup').addEventListener('click', () => {
