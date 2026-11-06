@@ -2256,10 +2256,20 @@ def _open_redeem(page: Page, on_progress: ProgressCallback | None = None) -> Non
             if _click_label(page, GENERAL_NAME):
                 page.wait_for_timeout(500)
                 continue
-        if _click_label(page, SETTINGS_NAME):
-            _emit(on_progress, step="invite", detail="Đã mở Cài đặt…")
-            page.wait_for_timeout(500)
-            continue
+        else:
+            # Chưa mở Cài đặt: phím tắt Ctrl+, mở thẳng, khỏi bấm menu.
+            try:
+                page.keyboard.press("Control+,")
+                _emit(on_progress, step="invite", detail="Đã bấm Ctrl+, để mở Cài đặt…")
+            except Exception:
+                pass
+            page.wait_for_timeout(600)
+            if _text_visible(page, SETTINGS_NAME):
+                continue
+            if _click_label(page, SETTINGS_NAME):
+                _emit(on_progress, step="invite", detail="Đã mở Cài đặt…")
+                page.wait_for_timeout(500)
+                continue
         if not _click_label(page, MENU_BTN):
             _click_bottom_left_menu(page)
         page.wait_for_timeout(500)
