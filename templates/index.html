@@ -321,6 +321,7 @@
           </div>
           <div class="toolbar" id="createdCookieTools">
             <button type="button" class="btn-all" id="btnCreatedCookies">Lấy cookie kho này · 5 luồng</button>
+            <button type="button" class="btn-primary" id="btnCreatedTokenCheck">Kiểm tra token tuần</button>
             <button type="button" class="btn-primary" id="btnCreatedRelogin">Đăng nhập lấy lại cookie</button>
             <button type="button" class="btn-primary" id="btnCreatedCopyCookies">Trích xuất cookie</button>
             <button type="button" class="btn-ghost" id="btnCreatedExportCookies">Xuất TXT</button>
@@ -980,7 +981,7 @@
         <table>
           <thead><tr>
             <th class="check"><input type="checkbox" id="createdCheckAll" title="Tích tất cả cookie trong kho này" /></th>
-            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu hộp thư</th><th>Mã mời</th><th>Mã đã nhập</th><th>Cookie</th><th>Proxy</th><th>Lúc lưu</th><th></th>
+            <th>#</th><th>Mail đã tạo</th><th>Mật khẩu hộp thư</th><th>Mã mời</th><th>Mã đã nhập</th><th>Cookie</th><th>Token tuần</th><th>Proxy</th><th>Lúc lưu</th><th></th>
           </tr></thead>
           <tbody>
             ${createdAccounts.map((a, i) => {
@@ -988,6 +989,12 @@
               const snip = rawCookie ? escapeHtml(rawCookie.slice(0, 48)) + '…' : '—';
               const canExport = !!(a.has_cookie && a.cookie_header);
               const checked = canExport && !createdExcluded.has(a.email.toLowerCase()) ? 'checked' : '';
+              const tokenHtml = (a.token_used_pct || a.token_left)
+                ? `<span class="badge ${a.token_used_pct ? 'ok' : 'no'}">${a.token_used_pct ? escapeHtml(a.token_used_pct) + '% đã dùng' : '—'}</span>
+                  ${a.token_left ? `<div class="cookie-snip">Còn ${escapeHtml(a.token_left)} token</div>` : ''}
+                  ${a.token_reset ? `<div class="hint">Làm mới: ${escapeHtml(a.token_reset)}</div>` : ''}
+                  ${a.token_checked_at ? `<div class="hint">${escapeHtml(a.token_checked_at.slice(0, 16).replace('T', ' '))}</div>` : ''}`
+                : (a.token_error ? `<span class="hint">${escapeHtml(a.token_error)}</span>` : '—');
               return `<tr>
               <td class="check"><input type="checkbox" class="created-export" data-email="${encodeURIComponent(a.email)}" ${canExport ? '' : 'disabled'} ${checked} title="${canExport ? 'Bỏ tích để không trích xuất cookie này' : 'Chưa có cookie'}" /></td>
               <td>${i + 1}</td>
@@ -1000,6 +1007,7 @@
                 <div class="cookie-snip" title="${escapeHtml(rawCookie)}">${snip}</div>
                 ${a.cookie_saved_at ? `<div class="hint">${escapeHtml(a.cookie_saved_at)}</div>` : ''}
               </td>
+              <td class="cookie-cell">${tokenHtml}</td>
               <td class="hint">${escapeHtml(a.proxy || '')}</td>
               <td class="hint">${escapeHtml(a.created_at || '')}</td>
               <td>
@@ -1380,6 +1388,39 @@
         }
       }, 1500);
     }
+    async function startCreatedTokenCheck() {
+      if (loginPollTimer || batchPollTimer) {
+        toast('Đang chạy việc khác');
+        return;
+      }
+      const emails = createdAccounts.filter(a => a.has_cookie).map(a => a.email);
+      if (!emails.length) {
+        setSignupStatus('Kho này chưa có tài khoản nào có cookie.', 'error');
+        return;
+      }
+      setSignupStatus(`Kiểm tra token tuần ${emails.length} TK có cookie…`, 'running');
+      const res = await fetch('/api/batch/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setSignupStatus(data.error || 'Không chạy được', 'error');
+        return;
+      }
+      batchPollTimer = setInterval(async () => {
+        const st = await fetch('/api/batch/' + data.job_id, { cache: 'no-store' }).then(r => r.json());
+        const fresh = st.ok || 0;
+        const kind = st.status === 'error' ? 'error' : (st.status === 'done' || st.status === 'stopped' ? 'done' : 'running');
+        setSignupStatus(st.detail || `Đã đọc token ${fresh} TK · lỗi ${st.fail || 0}`, kind);
+        if (st.status === 'done' || st.status === 'stopped' || st.status === 'error' || st.status === 'unknown') {
+          clearInterval(batchPollTimer);
+          batchPollTimer = null;
+          await loadCreated();
+        }
+      }, 1500);
+    }
     function createdCookieLines() {
       return createdAccounts
         .filter(a => a.has_cookie && a.cookie_header && !createdExcluded.has(a.email.toLowerCase()))
@@ -1408,6 +1449,7 @@
     document.getElementById('btnCreatedCopyCookies').addEventListener('click', copyCreatedCookies);
     document.getElementById('btnCreatedExportCookies').addEventListener('click', exportCreatedCookies);
     document.getElementById('btnCreatedCookies').addEventListener('click', () => startCreatedCookies(false));
+    document.getElementById('btnCreatedTokenCheck').addEventListener('click', startCreatedTokenCheck);
     document.getElementById('btnCreatedRelogin').addEventListener('click', () => startCreatedCookies(true));
     document.getElementById('btnNewCreatedKho').addEventListener('click', createCreatedWarehouse);
     document.getElementById('btnCustomSignup').addEventListener('click', () => {

@@ -24,6 +24,7 @@ from cookie_store import (
 from lay2fa_client import get_latest_muse_code, parse_account_line
 from muse_automation import (
     LoginProgress,
+    check_token_usage,
     clear_stop,
     create_muse_account,
     login_muse,
@@ -69,7 +70,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v71"
+APP_BUILD = "signup-v72"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -580,6 +581,142 @@ def _run_batch_cookies(job_id: str, emails: list[str], *, skip_existing: bool) -
         _batch_running.clear()
 
 
+def _token_one(email: str) -> dict:
+    if stop_requested():
+        return {"email": email, "status": "stopped", "error": "Đã dừng"}
+    try:
+        creds = _login_creds(email)
+        result = check_token_usage(email, proxy=creds["proxy"], headless=True)
+    except Exception as exc:
+        return {"email": email, "status": "error", "error": str(exc)}
+    if result.get("ok"):
+        return {
+            "email": email,
+            "status": "ok",
+            "used_pct": result.get("used_pct") or "",
+            "left": result.get("left") or "",
+            "reset": result.get("reset") or "",
+        }
+    return {"email": email, "status": "error", "error": result.get("error") or "Không đọc được token"}
+
+
+def _run_batch_tokens(job_id: str, emails: list[str]) -> None:
+    total = len(emails)
+    ok_count = 0
+    fail_count = 0
+    skip_count = 0
+    rows: list[dict] = []
+    pending: list[str] = []
+    running: set[str] = set()
+    state_lock = threading.Lock()
+
+    def publish(detail: str) -> None:
+        if stop_requested():
+            return
+        with state_lock:
+            snapshot = {
+                "status": "running",
+                "total": total,
+                "current": ok_count + fail_count + skip_count,
+                "workers": BATCH_PARALLEL,
+                "running_emails": sorted(running),
+                "detail": detail,
+                "ok": ok_count,
+                "fail": fail_count,
+                "skipped": skip_count,
+                "results": list(rows),
+            }
+        _set_batch(job_id, snapshot)
+
+    try:
+        for email in emails:
+            rec = get_account_cookies(email)
+            if not rec or not (rec.get("cookie_header") or "").strip():
+                skip_count += 1
+                rows.append({"email": email, "status": "skipped", "detail": "Chưa có cookie"})
+            else:
+                pending.append(email)
+        publish(f"Bỏ qua {skip_count} TK chưa có cookie · sắp chạy {min(BATCH_PARALLEL, len(pending) or 0)} luồng")
+
+        def run_one(email: str) -> dict:
+            if stop_requested():
+                return {"email": email, "status": "stopped", "error": "Đã dừng"}
+            with state_lock:
+                running.add(email)
+                active = sorted(running)
+            publish(f"Đang chạy {len(active)}/{BATCH_PARALLEL} luồng · {', '.join(active)}")
+            try:
+                return _token_one(email)
+            finally:
+                with state_lock:
+                    running.discard(email)
+
+        stopped = False
+        if pending:
+            with ThreadPoolExecutor(max_workers=BATCH_PARALLEL) as pool:
+                futures = [pool.submit(run_one, email) for email in pending]
+                for fut in as_completed(futures):
+                    if stop_requested():
+                        stopped = True
+                        break
+                    row = fut.result()
+                    with state_lock:
+                        rows.append(row)
+                        if row.get("status") == "ok":
+                            ok_count += 1
+                        elif row.get("status") != "stopped":
+                            fail_count += 1
+                    publish(
+                        f"Xong {ok_count + fail_count + skip_count}/{total} · còn {len(running)} luồng đang chạy"
+                    )
+                if stopped:
+                    for fut in futures:
+                        fut.cancel()
+        if stopped or stop_requested():
+            _set_batch(
+                job_id,
+                {
+                    "status": "stopped",
+                    "current": ok_count + fail_count + skip_count,
+                    "workers": BATCH_PARALLEL,
+                    "running_emails": [],
+                    "ran": True,
+                    "detail": f"Đã dừng. OK {ok_count}, lỗi {fail_count}, bỏ qua {skip_count}.",
+                    "ok": ok_count,
+                    "fail": fail_count,
+                    "skipped": skip_count,
+                    "results": rows,
+                },
+            )
+            return
+
+        ran = bool(pending)
+        detail = (
+            f"Hoàn tất ({BATCH_PARALLEL} luồng): {ok_count} TK đọc được token, {fail_count} lỗi, {skip_count} bỏ qua."
+            if ran
+            else f"Không chạy TK nào — {skip_count} TK chưa có cookie."
+        )
+        _set_batch(
+            job_id,
+            {
+                "status": "done",
+                "current": total,
+                "workers": BATCH_PARALLEL,
+                "running_emails": [],
+                "ran": ran,
+                "detail": detail,
+                "ok": ok_count,
+                "fail": fail_count,
+                "skipped": skip_count,
+                "results": rows,
+            },
+        )
+    except Exception as exc:
+        _set_batch(job_id, {"status": "error", "error": str(exc), "results": rows})
+    finally:
+        _batch_running.clear()
+
+
 @app.post("/api/batch/cookies")
 def api_batch_cookies():
     if _batch_running.is_set():
@@ -607,6 +744,38 @@ def api_batch_cookies():
         kwargs={"skip_existing": skip_existing},
         daemon=True,
     )
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "total": len(emails), "workers": BATCH_PARALLEL})
+
+
+@app.post("/api/batch/tokens")
+def api_batch_tokens():
+    if _batch_running.is_set():
+        return jsonify({"ok": False, "error": "Đang chạy batch khác — chờ xong rồi thử lại."}), 409
+
+    body = request.get_json(force=True, silent=True) or {}
+    emails_param = body.get("emails")
+    wh_id = body.get("warehouse_id")
+    kind = body.get("kind") or "plain"
+    if emails_param:
+        emails = [str(e).strip() for e in emails_param if str(e).strip()]
+    elif wh_id:
+        emails = [
+            (a.get("email") or "").strip()
+            for a in list_created_accounts(wh_id, kind).get("accounts", [])
+            if (a.get("email") or "").strip()
+        ]
+    else:
+        emails = warehouse_emails(get_active_warehouse().get("id"))
+
+    if not emails:
+        return jsonify({"ok": False, "error": "Không có tài khoản trong danh sách."}), 400
+
+    job_id = uuid.uuid4().hex[:12]
+    clear_stop()
+    _batch_running.set()
+    _set_batch(job_id, {"status": "running", "total": len(emails), "emails": emails})
+    thread = threading.Thread(target=_run_batch_tokens, args=(job_id, emails), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "total": len(emails), "workers": BATCH_PARALLEL})
 

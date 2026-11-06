@@ -519,6 +519,11 @@ def _created_account_view(acc: dict[str, Any]) -> dict[str, Any]:
         "muse_token": rec.get("muse_token") or token_from_cookie_header(header),
         "account_status": rec.get("account_status") or "",
         "login_error": rec.get("login_error") or "",
+        "token_used_pct": rec.get("token_used_pct") or "",
+        "token_left": rec.get("token_left") or "",
+        "token_reset": rec.get("token_reset") or "",
+        "token_checked_at": rec.get("token_checked_at") or "",
+        "token_error": rec.get("token_error") or "",
     }
 
 

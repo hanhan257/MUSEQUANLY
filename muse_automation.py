@@ -15,7 +15,7 @@ from typing import Callable
 
 from playwright.sync_api import Page
 
-from cookie_store import cookies_to_header, filter_muse_cookies, save_account_cookies, update_account_meta
+from cookie_store import cookies_to_header, filter_muse_cookies, get_account_cookies, save_account_cookies, update_account_meta
 from lay2fa_client import fetch_2fa_live_code, meta_message_ids, wait_for_new_muse_code
 
 MUSE_URL = "https://muse.ai/"
@@ -2578,6 +2578,215 @@ def _open_redeem(page: Page, on_progress: ProgressCallback | None = None) -> Non
             _click_bottom_left_menu(page)
         page.wait_for_timeout(500)
     raise RuntimeError("Đã vào Muse nhưng chưa thấy Quy đổi mã lời mời")
+
+
+def _parse_usage_text(text: str) -> dict[str, str]:
+    """Đọc số liệu từ trang Mức sử dụng: % đã dùng, token còn lại, ngày làm mới.
+    Chỉ đọc text, không mở trình duyệt, để test được riêng."""
+    flat = (text or "").replace("\u00a0", " ")
+    lines = [ln.strip() for ln in flat.splitlines() if ln.strip()]
+    used_pct = ""
+    for ln in lines:
+        low = ln.lower()
+        if "used" in low or "đã dùng" in low or "đã sử dụng" in low:
+            m = re.search(r"(\d+(?:[.,]\d+)?)\s*%", ln)
+            if m:
+                used_pct = m.group(1).replace(",", ".")
+                break
+    if not used_pct:
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*%", flat)
+        if m:
+            used_pct = m.group(1).replace(",", ".")
+    left = ""
+    for pattern in (
+        r"([\d.,]+\s*(?:B|M|K|tỷ|triệu|tỉ)?)\s*tokens?\s*(?:left|remaining|còn lại)",
+        r"(?:còn lại|remaining|left)\s*:?\s*([\d.,]+\s*(?:B|M|K|tỷ|triệu|tỉ)?)\s*tokens?",
+        r"([\d.,]+\s*(?:tỷ|triệu|tỉ))\s*token",
+    ):
+        m = re.search(pattern, flat, re.I)
+        if m:
+            left = re.sub(r"\s+", " ", m.group(1)).strip()
+            break
+    reset = ""
+    for ln in lines:
+        low = ln.lower()
+        if "reset" in low or "làm mới" in low or "tuần" in low or "week" in low:
+            m = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", ln)
+            if m:
+                reset = m.group(1)
+                break
+    if not reset:
+        m = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", flat)
+        if m:
+            reset = m.group(1)
+    return {"used_pct": used_pct, "left": left, "reset": reset}
+
+
+_USAGE_ROW_JS = r"""() => {
+  const needles = ['mức sử dụng', 'usage'];
+  let best = null;
+  let bestDepth = -1;
+  for (const el of document.querySelectorAll('body *')) {
+    const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!t || t.length > 80) continue;
+    if (!needles.some((n) => t.includes(n))) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.display === 'none') continue;
+    let depth = 0;
+    let node = el;
+    while (node && node !== document.body) { depth++; node = node.parentElement; }
+    if (depth > bestDepth) { best = el; bestDepth = depth; }
+  }
+  if (!best) return false;
+  best.click();
+  return true;
+}"""
+
+
+def _click_usage_row(page: Page) -> bool:
+    """Bấm dòng Mức sử dụng trong Cài đặt. Dòng này có thể chỉ là div bấm được,
+    không phải nút, nên bấm thường không trúng thì bấm bằng JS vào đúng dòng đó."""
+    if _click_label(page, USAGE_NAME):
+        return True
+    for frame in _frames(page):
+        try:
+            if frame.evaluate(_USAGE_ROW_JS):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _usage_panel_text(page: Page) -> str:
+    """Text trong hộp Cài đặt (nếu có) hoặc toàn trang, nếu có cả % và token."""
+    try:
+        dialogs = page.locator('[role="dialog"]')
+        if dialogs.count() >= 1:
+            text = (dialogs.first.inner_text() or "").strip()
+        else:
+            text = (page.locator("body").first.inner_text() or "").strip()
+    except Exception:
+        return ""
+    if "%" in text and "token" in text.lower():
+        return text
+    return ""
+
+
+def _open_usage(page: Page, on_progress: ProgressCallback | None = None) -> str:
+    """Mở trang Mức sử dụng trong Cài đặt, trả về text của trang đó."""
+    for _ in range(16):
+        if stop_requested():
+            raise RuntimeError("Đã dừng")
+        text = _usage_panel_text(page)
+        if text:
+            return text
+        if _click_usage_row(page):
+            _emit(on_progress, step="usage", detail="Đã bấm Mức sử dụng, chờ số liệu…")
+            page.wait_for_timeout(800)
+            continue
+        if _text_visible(page, SETTINGS_NAME):
+            if _click_label(page, GENERAL_NAME):
+                page.wait_for_timeout(500)
+                continue
+        else:
+            try:
+                page.keyboard.press("Control+,")
+                _emit(on_progress, step="usage", detail="Đã bấm Ctrl+, để mở Cài đặt…")
+            except Exception:
+                pass
+            page.wait_for_timeout(600)
+            if _text_visible(page, SETTINGS_NAME):
+                continue
+            if _click_label(page, SETTINGS_NAME):
+                _emit(on_progress, step="usage", detail="Đã mở Cài đặt…")
+                page.wait_for_timeout(500)
+                continue
+        if not _click_label(page, MENU_BTN):
+            _click_bottom_left_menu(page)
+        page.wait_for_timeout(500)
+    raise RuntimeError("Đã vào Muse nhưng chưa thấy trang Mức sử dụng")
+
+
+def check_token_usage(
+    email: str,
+    *,
+    proxy: str | None = None,
+    headless: bool = True,
+    on_progress: ProgressCallback | None = None,
+) -> dict:
+    """Dùng cookie đã lưu mở trang Mức sử dụng, đọc % đã dùng / token còn lại / ngày làm mới.
+    Chỉ đọc, không tạo hay đổi tài khoản. Lưu kết quả vào cookie record của tài khoản."""
+    from datetime import datetime, timezone
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        return {"ok": False, "email": email, "error": f"Chưa cài Playwright: {exc}"}
+    rec = get_account_cookies(email) or {}
+    cookies = [c for c in (rec.get("cookies") or []) if isinstance(c, dict) and c.get("name") and c.get("value")]
+    if not cookies:
+        for part in (rec.get("cookie_header") or "").split(";"):
+            piece = part.strip()
+            if "=" not in piece:
+                continue
+            name, value = piece.split("=", 1)
+            name, value = name.strip(), value.strip()
+            if name and value:
+                cookies.append({"name": name, "value": value, "domain": ".muse.ai", "path": "/"})
+    if not cookies:
+        return {"ok": False, "email": email, "error": "Chưa có cookie"}
+
+    def _fail(message: str) -> dict:
+        try:
+            update_account_meta(email, token_error=message)
+        except Exception:
+            pass
+        return {"ok": False, "email": email, "error": message}
+
+    _emit(on_progress, step="usage", detail=f"Kiểm tra token tuần {email}…")
+    try:
+        with sync_playwright() as p:
+            proxy_cfg = parse_proxy(proxy)
+            try:
+                browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=headless))
+            except Exception as exc:
+                message = str(exc).split("╔", 1)[0].strip()
+                return _fail(message or "Không mở được trình duyệt")
+            try:
+                context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+                context.add_init_script(_HIDE_WEBDRIVER)
+                page = context.new_page()
+                page.set_default_timeout(20000)
+                try:
+                    context.add_cookies(cookies)
+                except Exception:
+                    pass
+                page.goto(MUSE_URL, wait_until="domcontentloaded", timeout=90000)
+                page.wait_for_timeout(1500)
+                if not _muse_app_visible(page):
+                    return _fail("Cookie hết hạn hoặc chưa đăng nhập")
+                text = _open_usage(page, on_progress)
+                parsed = _parse_usage_text(text)
+                if not parsed["used_pct"] and not parsed["left"]:
+                    return _fail("Đã mở Mức sử dụng nhưng chưa đọc được số liệu")
+                checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                update_account_meta(
+                    email,
+                    token_used_pct=parsed["used_pct"],
+                    token_left=parsed["left"],
+                    token_reset=parsed["reset"],
+                    token_checked_at=checked_at,
+                    token_error="",
+                )
+                return {"ok": True, "email": email, **parsed, "checked_at": checked_at}
+            finally:
+                browser.close()
+    except Exception as exc:
+        if stop_requested() or str(exc) == "Đã dừng":
+            return {"ok": False, "email": email, "error": "Đã dừng"}
+        return _fail(str(exc))
 
 
 def _dialog_scope(page: Page):
