@@ -120,6 +120,16 @@ def _code_link_for(account: dict[str, str]) -> str:
     return ""
 
 
+def _account_email_link_line(account: dict[str, str]) -> str:
+    """Dòng xuất data đăng nhập: email|link lấy mã. Chỉ 2 ô; tài khoản nào không
+    có link lấy mã thì chỉ còn email. Dùng cho nút 'Xuất data đăng nhập'.
+    _account_line (đủ 6 ô) vẫn dùng cho accounts.txt nội bộ."""
+    parts = [account["email"], _code_link_for(account)]
+    while parts and not parts[-1].strip():
+        parts.pop()
+    return "|".join(parts)
+
+
 def _account_line(account: dict[str, str]) -> str:
     """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy|link lấy mã.
     Ô 3, 4, 5, 6 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập
@@ -139,10 +149,11 @@ def _account_line(account: dict[str, str]) -> str:
 
 
 def export_login_data(warehouse_id: str | None = None, emails: set[str] | None = None) -> tuple[str, int]:
-    """Xuất data đăng nhập của kho (mặc định kho đang chọn). emails rỗng = xuất cả kho."""
+    """Xuất data đăng nhập của kho (mặc định kho đang chọn). emails rỗng = xuất cả kho.
+    Mỗi dòng chỉ có email|link lấy mã."""
     accounts = get_accounts_for_warehouse(warehouse_id)
     lines = [
-        _account_line(a)
+        _account_email_link_line(a)
         for a in accounts
         if not emails or (a.get("email") or "").lower() in emails
     ]
@@ -153,7 +164,7 @@ def export_created_login_data(
     warehouse_id: str | None = None, kind: str = "plain", emails: set[str] | None = None
 ) -> tuple[str, int]:
     """Xuất data đăng nhập của kho đã tạo (mặc định kho đang chọn của loại đó).
-    Đọc dòng thô (không qua _created_account_view) để lấy đúng mật khẩu hộp thư."""
+    Mỗi dòng chỉ có email|link lấy mã. Đọc dòng thô (không qua _created_account_view)."""
     data = ensure_initialized()
     kind = "password" if kind == "password" else "plain"
     warehouses = [wh for wh in data.get("created_warehouses") or [] if wh.get("kind") == kind]
@@ -164,7 +175,7 @@ def export_created_login_data(
         current = warehouses[0]
     accounts = (current.get("accounts") or []) if current else []
     lines = [
-        _account_line(a)
+        _account_email_link_line(a)
         for a in accounts
         if not emails or (a.get("email") or "").lower() in emails
     ]
