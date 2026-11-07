@@ -97,6 +97,7 @@
     .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); box-shadow: inset 3px 0 0 #f472b6, 0 0 16px rgba(236, 72, 153, 0.18); }
     .side-actions .btn-ghost:hover:not(:disabled) { background: rgba(236, 72, 153, 0.08); border-color: rgba(236, 72, 153, 0.35); }
     #cardFilterBar .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
+    #signupTools [data-signup-count].active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); box-shadow: inset 3px 0 0 #f472b6; }
     .created-kho { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
     .signup-proxy { margin-bottom: 0.75rem; }
     .signup-proxy label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
@@ -308,7 +309,7 @@
             <div class="meta" id="signupMeta">han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã</div>
           </div>
           <div class="toolbar" id="signupTools">
-            <button type="button" class="btn-primary" data-signup-count="1">1 TK</button>
+            <button type="button" class="btn-ghost" data-signup-count="1">1 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="5">5 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="10">10 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="50">50 TK</button>
@@ -2074,7 +2075,13 @@
       startSignup(count, signupMode());
     });
     document.querySelectorAll('[data-signup-count]').forEach(btn => {
-      btn.addEventListener('click', () => startSignup(Number(btn.dataset.signupCount), signupMode()));
+      btn.addEventListener('click', () => {
+        document.getElementById('signupCustomCount').value = btn.dataset.signupCount;
+        document.querySelectorAll('[data-signup-count]').forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+    document.getElementById('signupCustomCount').addEventListener('input', () => {
+      document.querySelectorAll('[data-signup-count]').forEach(b => b.classList.toggle('active', b.dataset.signupCount === document.getElementById('signupCustomCount').value));
     });
     async function stopSignup(btn) {
       btn.disabled = true;
