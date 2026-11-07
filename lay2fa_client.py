@@ -57,9 +57,18 @@ def email_from_lay2fa_url(url: str) -> str | None:
     return None
 
 
+_PROXY_SHAPE = re.compile(r"^[\dA-Za-z.\-]+:\d{2,5}(:.*)?$")
+
+
+def _looks_like_proxy(value: str) -> bool:
+    """Proxy có dạng host:port (có thể kèm :user:pass); mã 2FA (base32) không có dấu ':'."""
+    return bool(_PROXY_SHAPE.match((value or "").strip()))
+
+
 def parse_account_line(line: str) -> tuple[str, str, str, str, str] | None:
     """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú,
-    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy|link lấy mã.
+    định dạng tool xuất đủ ô: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy|link lấy mã,
+    và định dạng tool xuất gọn: email|link lấy mã|proxy (proxy ở ô 3, nhận biết bằng dạng host:port).
     Ô thứ 6 (link lấy mã) được chấp nhận khi dán lại nhưng không lưu — link suy ra từ
     email/loại hộp thư lúc xuất. Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư, proxy)."""
     line = line.strip()
@@ -74,7 +83,9 @@ def parse_account_line(line: str) -> tuple[str, str, str, str, str] | None:
     secret = parts[2] if len(parts) > 2 else ""
     mail_password = parts[3] if len(parts) > 3 else ""
     proxy = parts[4] if len(parts) > 4 else ""
-
+    if not proxy and _looks_like_proxy(secret):
+        # Định dạng gọn email|link lấy mã|proxy: proxy ở ô 3, không phải mã 2FA.
+        proxy, secret = secret.strip(), ""
     if second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
         url = second
     else:

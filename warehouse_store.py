@@ -121,10 +121,14 @@ def _code_link_for(account: dict[str, str]) -> str:
 
 
 def _account_email_link_line(account: dict[str, str]) -> str:
-    """Dòng xuất data đăng nhập: email|link lấy mã. Chỉ 2 ô; tài khoản nào không
-    có link lấy mã thì chỉ còn email. Dùng cho nút 'Xuất data đăng nhập'.
-    _account_line (đủ 6 ô) vẫn dùng cho accounts.txt nội bộ."""
-    parts = [account["email"], _code_link_for(account)]
+    """Dòng xuất data đăng nhập: email|link lấy mã|proxy. Tài khoản nào không có
+    link thì chỉ còn email (và proxy nếu có: email||proxy). Dùng cho nút
+    'Xuất data đăng nhập'. _account_line (đủ 6 ô) vẫn dùng cho accounts.txt nội bộ."""
+    parts = [
+        account["email"],
+        _code_link_for(account),
+        (account.get("proxy") or "").strip(),
+    ]
     while parts and not parts[-1].strip():
         parts.pop()
     return "|".join(parts)
