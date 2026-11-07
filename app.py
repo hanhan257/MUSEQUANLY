@@ -78,7 +78,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v89"
+APP_BUILD = "signup-v90"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1406,7 +1406,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     seed = (seed or "").strip().upper()
     per_proxy = max(1, min(50, int(per_proxy or 5)))
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
-    set_signup_turn_gap(5 if max_workers > 5 else 20)
+    set_signup_turn_gap(3)
     if proxies:
         count = min(count, len(proxies) * per_proxy)
     state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
