@@ -92,6 +92,8 @@
     .kho-del:hover { color: #ffb4b4; background: rgba(255, 107, 107, 0.14); }
     .created-kho .kho-row { display: inline-flex; }
     .side-actions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0; }
+    .side-actions .btn-ghost { position: relative; }
+    .side-count { position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); font-size: 0.72rem; color: var(--muted); font-weight: 600; }
     .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); box-shadow: inset 3px 0 0 #f472b6, 0 0 16px rgba(236, 72, 153, 0.18); }
     .side-actions .btn-ghost:hover:not(:disabled) { background: rgba(236, 72, 153, 0.08); border-color: rgba(236, 72, 153, 0.35); }
     #cardFilterBar .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
@@ -283,12 +285,12 @@
         <p>Kho tài khoản · cookie · OTP Lay2FA</p>
       </div>
       <div class="side-actions">
-        <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản</button>
-        <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
-        <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu</button>
-        <button type="button" class="btn-ghost" id="btnCards">Kho thẻ</button>
-        <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy</button>
-        <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản</button>
+        <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản<span class="side-count" id="countAccounts"></span></button>
+        <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu<span class="side-count" id="countPlain"></span></button>
+        <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu<span class="side-count" id="countPassword"></span></button>
+        <button type="button" class="btn-ghost" id="btnCards">Kho thẻ<span class="side-count" id="countCards"></span></button>
+        <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy<span class="side-count" id="countProxies"></span></button>
+        <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản<span class="side-count" id="countBuff"></span></button>
         <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
     </aside>
@@ -1270,6 +1272,7 @@
 
     async function refreshAll() {
       await loadWarehouses();
+      await loadSidebarCounts();
       applyView();
       if (viewMode === 'signup') {
         await loadCreated();
@@ -1453,6 +1456,23 @@
       const res = await fetch('/api/cards?t=' + Date.now(), { cache: 'no-store' });
       renderCards(await res.json());
     }
+    async function loadSidebarCounts() {
+      try {
+        const res = await fetch('/api/summary?t=' + Date.now(), { cache: 'no-store' });
+        const data = await res.json();
+        if (!data.ok) return;
+        const set = (id, item) => {
+          const el = document.getElementById(id);
+          if (el && item) el.textContent = `${item.active}/${item.total}`;
+        };
+        set('countAccounts', data.accounts);
+        set('countPlain', data.created_plain);
+        set('countPassword', data.created_password);
+        set('countCards', data.cards);
+        set('countProxies', data.proxies);
+        set('countBuff', data.buff);
+      } catch (e) { /* để lần sau */ }
+    }
     async function deleteCard(id) {
       const res = await fetch('/api/cards/delete', {
         method: 'POST',
@@ -1462,6 +1482,7 @@
       const data = await res.json();
       if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
       renderCards(data);
+      loadSidebarCounts();
       toast('Đã xóa thẻ');
     }
     document.getElementById('btnCards').addEventListener('click', async () => {
@@ -1489,6 +1510,7 @@
       document.getElementById('cardExpiry').value = '';
       document.getElementById('cardCvv').value = '';
       renderCards(data);
+      loadSidebarCounts();
       toast('Đã thêm ' + (data.card && data.card.name ? data.card.name : 'thẻ'));
     });
     function signupProxyLines() {
@@ -1535,6 +1557,7 @@
       const data = await res.json();
       if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
       renderProxies(data);
+      loadSidebarCounts();
       toast('Đã xóa proxy');
     }
     async function resetProxy(id) {
@@ -1546,6 +1569,7 @@
       const data = await res.json();
       if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
       renderProxies(data);
+      loadSidebarCounts();
       toast('Đã mở lại proxy');
     }
     document.getElementById('btnProxyView').addEventListener('click', async () => {
@@ -1564,6 +1588,7 @@
       if (!data.ok) { toast(data.error || 'Không thêm được proxy'); return; }
       document.getElementById('proxyPaste').value = '';
       renderProxies(data);
+      loadSidebarCounts();
       toast(`Đã thêm ${data.added || 0} proxy` + (data.duplicate ? ` · ${data.duplicate} trùng` : ''));
     });
     function signupMode() {

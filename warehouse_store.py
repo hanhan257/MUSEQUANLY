@@ -280,6 +280,35 @@ def set_active_warehouse(warehouse_id: str) -> dict[str, Any] | None:
     return get_warehouse(warehouse_id, data)
 
 
+def list_all_regular_accounts() -> list[dict[str, Any]]:
+    """Tất cả tài khoản trong các kho thường (không tính Kho lỗi)."""
+    data = ensure_initialized()
+    out: list[dict[str, Any]] = []
+    for wh in _regular_warehouses(data):
+        for acc in wh.get("accounts") or []:
+            row = dict(acc)
+            row["warehouse_id"] = wh.get("id")
+            row["warehouse_name"] = wh.get("name")
+            out.append(row)
+    return out
+
+
+def list_all_created_accounts(kind: str = "plain") -> list[dict[str, Any]]:
+    """Tất cả tài khoản đã tạo của 1 loại (plain/password), qua mọi kho tạo."""
+    data = ensure_initialized()
+    kind = "password" if kind == "password" else "plain"
+    out: list[dict[str, Any]] = []
+    for wh in data.get("created_warehouses") or []:
+        if wh.get("kind") != kind:
+            continue
+        for acc in wh.get("accounts") or []:
+            row = dict(acc)
+            row["warehouse_id"] = wh.get("id")
+            row["warehouse_name"] = wh.get("name") or "Kho"
+            out.append(row)
+    return out
+
+
 def list_warehouses_summary() -> dict[str, Any]:
     data = ensure_initialized()
     ordered = _regular_warehouses(data)

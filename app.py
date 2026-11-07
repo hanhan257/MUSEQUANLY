@@ -19,6 +19,7 @@ from cookie_store import (
     export_for_email,
     get_account_cookies,
     list_all_cookies,
+    normalize_email_key,
     token_from_cookie_header,
 )
 from lay2fa_client import get_latest_muse_code, parse_account_line
@@ -52,6 +53,8 @@ from warehouse_store import (
     delete_created_account,
     delete_created_warehouse,
     delete_warehouse,
+    list_all_created_accounts,
+    list_all_regular_accounts,
     list_card_warehouses,
     list_created_accounts,
     set_active_created_warehouse,
@@ -76,6 +79,7 @@ from warehouse_store import (
     rename_warehouse,
     restore_account_from_error,
     save_active_accounts,
+    usable_card_warehouses,
     warehouse_invite_code,
     set_accounts_per_warehouse,
     set_active_warehouse,
@@ -87,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v91"
+APP_BUILD = "signup-v92"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1909,6 +1913,43 @@ def api_proxies_reset():
     if not rec:
         return jsonify({"ok": False, "error": "Không thấy proxy."}), 404
     return jsonify({"ok": True, "proxy": rec, "proxies": list_proxies()})
+
+
+@app.get("/api/summary")
+def api_summary():
+    """Số lượng active/tổng cho sidebar: tài khoản có cookie / tổng tài khoản."""
+    cookie_emails = {normalize_email_key(e) for e in list_all_cookies().keys()}
+
+    def _count(rows: list[dict]) -> dict[str, int]:
+        total = len(rows)
+        active = sum(
+            1 for r in rows if normalize_email_key(str(r.get("email") or "")) in cookie_emails
+        )
+        return {"active": active, "total": total}
+
+    plain = list_all_created_accounts("plain")
+    password = list_all_created_accounts("password")
+    buff = [
+        r
+        for r in plain + password
+        if (r.get("warehouse_name") or "").startswith("Kho - ")
+    ]
+    cards = list_card_warehouses()["warehouses"]
+    proxies = list_proxies()
+    return jsonify(
+        {
+            "ok": True,
+            "accounts": _count(list_all_regular_accounts()),
+            "created_plain": _count(plain),
+            "created_password": _count(password),
+            "buff": _count(buff),
+            "cards": {"active": len(usable_card_warehouses()), "total": len(cards)},
+            "proxies": {
+                "active": sum(1 for p in proxies if p.get("status") == "ready"),
+                "total": len(proxies),
+            },
+        }
+    )
 
 
 @app.get("/api/created")
