@@ -21,14 +21,34 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Cache giữ trong bộ nhớ: cookies.json đã ~4MB, đọc + parse lại mỗi lần
+# get_account_cookies() gọi là quá chậm (một lần chuyển kho gọi ~200 lần).
+# Khóa cache là (mtime, size) của file: file đổi (ghi mới / git pull từ máy
+# khác) thì đọc lại, không thì dùng bản đã parse. Mọi ghi đều qua _save_raw
+# nên cache luôn được cập nhật sau khi ghi.
+_cache: dict[str, Any] | None = None
+_cache_key: tuple[int, int] | None = None
+
+
 def _load_raw() -> dict[str, Any]:
+    global _cache, _cache_key
     with _io_lock:
         if not COOKIES_FILE.exists():
+            _cache, _cache_key = {}, None
             return {}
         try:
-            return json.loads(COOKIES_FILE.read_text(encoding="utf-8"))
+            st = COOKIES_FILE.stat()
+        except OSError:
+            return _cache if _cache is not None else {}
+        key = (st.st_mtime_ns, st.st_size)
+        if _cache is not None and _cache_key == key:
+            return _cache
+        try:
+            data = json.loads(COOKIES_FILE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return {}
+            return _cache if _cache is not None else {}
+        _cache, _cache_key = data, key
+        return data
 
 
 def _write_export_txt(data: dict[str, Any]) -> None:
@@ -43,9 +63,15 @@ def _write_export_txt(data: dict[str, Any]) -> None:
 
 
 def _save_raw(data: dict[str, Any]) -> None:
+    global _cache, _cache_key
     with _io_lock:
         COOKIES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         _write_export_txt(data)
+        try:
+            st = COOKIES_FILE.stat()
+            _cache, _cache_key = data, (st.st_mtime_ns, st.st_size)
+        except OSError:
+            _cache, _cache_key = data, None
 
 
 def token_from_cookie_header(header: str) -> str:

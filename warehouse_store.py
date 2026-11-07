@@ -67,9 +67,30 @@ def _default_state() -> dict[str, Any]:
     return {"active_warehouse_id": None, "warehouses": []}
 
 
+# Cache giữ trong bộ nhớ như cookie_store: warehouses.json được đọc lại ở
+# mọi hàm (ensure_initialized gọi _load() tới 2 lần), chuyển kho gọi hàng
+# chục lần. Khóa cache là (mtime, size); mọi ghi đều qua _save nên cache
+# luôn được cập nhật sau khi ghi. Mọi chỗ dùng _load() đều hoặc chỉ đọc,
+# hoặc sửa rồi _save ngay, nên trả về cùng object là an toàn.
+_load_cache: dict[str, Any] | None = None
+_load_key: tuple[int, int] | None = None
+
+
+def _stat_key() -> tuple[int, int] | None:
+    try:
+        st = WAREHOUSES_FILE.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
 def _load() -> dict[str, Any]:
+    global _load_cache, _load_key
     if not WAREHOUSES_FILE.exists():
         return _default_state()
+    key = _stat_key()
+    if _load_cache is not None and key is not None and _load_key == key:
+        return _load_cache
     try:
         raw = WAREHOUSES_FILE.read_text(encoding="utf-8")
         data = json.loads(raw)
@@ -78,14 +99,17 @@ def _load() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise RuntimeError("warehouses.json đang hỏng, không ghi đè file kho.")
     data.setdefault("warehouses", [])
+    _load_cache, _load_key = data, key
     return data
 
 
 def _save(data: dict[str, Any]) -> None:
+    global _load_cache, _load_key
     text = json.dumps(data, ensure_ascii=False, indent=2)
     tmp = WAREHOUSES_FILE.with_suffix(".json.tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(WAREHOUSES_FILE)
+    _load_cache, _load_key = data, _stat_key()
     _sync_accounts_txt(data)
 
 

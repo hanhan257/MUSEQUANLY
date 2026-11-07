@@ -533,6 +533,9 @@
     let activeWarehouseKind = 'normal';
     let warehouseSummary = null;
     let viewMode = 'kho';
+    // Số thứ tự lần chuyển kho gần nhất: bấm Kho 4 rồi bấm Kho 1 ngay thì
+    // các fetch cũ của Kho 4 về sau sẽ bị bỏ (không đè data Kho 1 nữa).
+    let switchSeq = 0;
     const excludedExport = new Set();
 
     function toast(msg) {
@@ -554,7 +557,9 @@
     }
 
     async function loadWarehouses() {
+      const seq = switchSeq;
       const res = await fetch('/api/warehouses');
+      if (seq !== switchSeq) return;
       warehouseSummary = await res.json();
       activeWarehouseId = warehouseSummary.active_warehouse_id;
       const list = warehouseSummary.warehouses || [];
@@ -616,13 +621,23 @@
       const leavingSignup = viewMode === 'password' || viewMode === 'cards' || viewMode === 'buff' || viewMode === 'account';
       viewMode = 'account';
       if (!id || (id === activeWarehouseId && !leavingSignup)) return;
+      const seq = ++switchSeq;
       if (id !== activeWarehouseId) {
+        // Đổi giao diện ngay, khỏi chờ fetch: pill sáng, tiêu đề đổi, bảng
+        // hiện "Đang tải…" thay vì để data kho cũ nằm đó.
+        activeWarehouseId = id;
+        document.querySelectorAll('#accountKhoList .kho-btn').forEach(b => b.classList.toggle('active', b.dataset.id === id));
+        const target = (warehouseSummary.warehouses || []).find(w => w.id === id);
+        document.getElementById('khoTitle').textContent = target ? target.name : 'Kho';
+        const wrap = document.getElementById('tableWrap');
+        if (wrap) wrap.innerHTML = '<div class="empty">Đang tải ' + escapeHtml(target ? target.name : 'kho') + '…</div>';
+        applyView();
         await fetch('/api/warehouses/active', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
         });
-        activeWarehouseId = id;
+        if (seq !== switchSeq) return;
         toast('Đã chuyển kho');
       }
       await refreshAll();
@@ -806,12 +821,18 @@
     }
 
     async function loadEditor() {
-      const q = activeWarehouseId ? '?warehouse_id=' + encodeURIComponent(activeWarehouseId) + '&t=' + Date.now() : '?t=' + Date.now();
-      const res = await fetch('/api/accounts' + q, { cache: 'no-store' });
+      const wid = activeWarehouseId;
+      const seq = switchSeq;
+      const q = wid ? '?warehouse_id=' + encodeURIComponent(wid) + '&t=' + Date.now() : '?t=' + Date.now();
+      // 2 fetch chạy song song (trước đây nối tiếp), kết quả cũ thì bỏ.
+      const [res, vaultRes] = await Promise.all([
+        fetch('/api/accounts' + q, { cache: 'no-store' }),
+        fetch('/api/cookies/vault' + q, { cache: 'no-store' }),
+      ]);
+      if (seq !== switchSeq || wid !== activeWarehouseId) return;
       const data = await res.json();
-      if (data.warehouse?.id) activeWarehouseId = data.warehouse.id;
-      const vaultRes = await fetch('/api/cookies/vault' + q, { cache: 'no-store' });
       const vault = await vaultRes.json();
+      if (data.warehouse?.id) activeWarehouseId = data.warehouse.id;
       const byEmail = {};
       (vault.items || []).forEach(it => { byEmail[it.email.toLowerCase()] = it; });
       accounts = (data.accounts || []).map(a => {
@@ -1315,8 +1336,8 @@
     }
 
     async function refreshAll() {
-      await loadWarehouses();
-      await loadSidebarCounts();
+      // Kho + số sidebar không phụ thuộc nhau, chạy song song cho nhanh.
+      await Promise.all([loadWarehouses(), loadSidebarCounts()]);
       applyView();
       if (viewMode === 'password') {
         await loadCreated();

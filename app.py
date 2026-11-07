@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v110"
+APP_BUILD = "signup-v111"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -2262,9 +2262,8 @@ def api_cookies_vault():
     items: list[dict] = []
     for acc in load_accounts(wh["id"]):
         email = acc["email"]
-        header = acc.get("has_cookie") and (get_account_cookies(email) or {}).get("cookie_header") or ""
         rec = get_account_cookies(email) or {}
-        header = header or rec.get("cookie_header") or rec.get("muse_cookie_header") or ""
+        header = rec.get("cookie_header") or rec.get("muse_cookie_header") or ""
         token = rec.get("muse_token") or token_from_cookie_header(header)
         items.append(
             {
