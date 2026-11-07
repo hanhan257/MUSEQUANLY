@@ -34,6 +34,15 @@ from muse_automation import (
     set_signup_turn_gap,
     stop_requested,
 )
+from proxy_store import (
+    add_proxies,
+    bump_proxy_use,
+    delete_proxies,
+    list_proxies,
+    mark_proxy_error,
+    reset_proxy,
+    usable_proxies,
+)
 from warehouse_store import (
     add_card_warehouse,
     add_created_account,
@@ -78,7 +87,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v90"
+APP_BUILD = "signup-v91"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1398,7 +1407,174 @@ def _run_signup_lane(
         return
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True) -> None:
+def _skip_lane_rest(job_id: str, count: int, state: dict, state_lock: threading.Lock, rest: list[int], chain: _InviteChain | None, reason: str) -> None:
+    """Bỏ qua các tài khoản còn lại của 1 lane (ghi lỗi + mở khóa chuỗi mã mời)."""
+    if not rest:
+        return
+    with state_lock:
+        for skipped in rest:
+            state["fail"] += 1
+            state["finished"] += 1
+            state["failures"].append(f"TK #{skipped + 1}: bỏ qua, {reason}")
+        running = list(state["running"])
+        fails = list(state["failures"])
+        text = (
+            f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+            + (f" · đang chạy {', '.join(running)}" if running else "")
+        )
+        note = state.get("invite_note") or ""
+        if note and note not in text:
+            text = note + "\n" + text
+        if fails:
+            text += "\n" + "\n".join(fails)
+    if chain is not None:
+        for skipped in rest:
+            chain.publish(skipped, None)
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": text,
+            "done_count": state["finished"],
+            "ok_count": state["ok"],
+            "fail_count": state["fail"],
+            "failures": fails,
+            "total": count,
+        },
+    )
+
+
+_PROXY_ERROR_HINTS = ("proxy", "err_", "timeout", "hết thời gian", "kết nối", "connection", "không tải", "muse chặn", "target page", "browser", "tunnel", "econn", "reset", "timed out")
+_NO_PROXY_HINTS = ("kho thẻ", "thẻ", "card", "otp", "mã mời", "quy đổi", "đã dừng", "hộp thư", "captcha", "invite")
+
+
+def _is_proxy_error(text: str) -> bool:
+    """Lỗi có giống lỗi proxy/mạng không. Lỗi thẻ, OTP, mã mời, captcha thì
+    không phải lỗi proxy nên không khóa proxy."""
+    t = (text or "").lower()
+    if any(h in t for h in _NO_PROXY_HINTS):
+        return False
+    return any(h in t for h in _PROXY_ERROR_HINTS)
+
+
+class _ProxyPool:
+    """Pool Kho proxy cho 1 lần chạy: phát proxy theo thứ tự đã dán, khóa khi
+    đủ lượt dùng hoặc lỗi khi chạy."""
+
+    def __init__(self, records: list[dict], limit: int):
+        self.limit = max(1, int(limit or 1))
+        self._lock = threading.Lock()
+        self._items = [
+            {"id": str(r.get("id")), "proxy": str(r.get("proxy") or ""), "uses": int(r.get("uses") or 0)}
+            for r in records
+            if str(r.get("proxy") or "").strip()
+        ]
+        self._in_use: set[str] = set()
+        self._dead: set[str] = set()
+
+    def take(self) -> dict | None:
+        with self._lock:
+            for it in self._items:
+                if it["id"] in self._in_use or it["id"] in self._dead:
+                    continue
+                if it["uses"] >= self.limit:
+                    continue
+                self._in_use.add(it["id"])
+                return dict(it)
+            return None
+
+    def release(self, proxy_id: str) -> None:
+        with self._lock:
+            self._in_use.discard(str(proxy_id))
+
+    def bump(self, proxy_id: str) -> bool:
+        """+1 lượt dùng sau 1 TK tạo thành công. Trả True nếu proxy vừa đủ giới hạn (đã khóa)."""
+        with self._lock:
+            rec = bump_proxy_use(proxy_id, self.limit)
+            for it in self._items:
+                if it["id"] == str(proxy_id):
+                    it["uses"] = int((rec or {}).get("uses") or it["uses"] + 1)
+                    if rec and rec.get("status") == "used":
+                        self._dead.add(it["id"])
+                    break
+            return bool(rec and rec.get("status") == "used")
+
+    def fail(self, proxy_id: str, error: str = "") -> None:
+        with self._lock:
+            mark_proxy_error(proxy_id, error)
+            self._dead.add(str(proxy_id))
+
+
+def _run_signup_lane_pool(
+    job_id: str,
+    *,
+    count: int,
+    mode: str,
+    state: dict,
+    state_lock: threading.Lock,
+    indices: list[int],
+    chain: _InviteChain | None,
+    fixed_code: str = "",
+    pool: _ProxyPool,
+    per_proxy: int,
+) -> None:
+    """Một lane dùng Kho proxy: lấy proxy từ pool; proxy đủ lượt hoặc lỗi
+    (lỗi mạng/proxy) thì khóa lại rồi đổi sang proxy mới và làm tiếp các TK
+    còn lại. Lỗi không phải do proxy (thẻ, OTP, mã mời...) thì dừng lane như cũ."""
+    if not indices:
+        return
+    current = pool.take()
+    if current is None:
+        _skip_lane_rest(job_id, count, state, state_lock, indices, chain, "hết proxy trong kho")
+        return
+    for pos, index in enumerate(indices):
+        if stop_requested():
+            pool.release(current["id"])
+            return
+        ok = _signup_one(
+            job_id,
+            count=count,
+            mode=mode,
+            state=state,
+            state_lock=state_lock,
+            proxy=current["proxy"],
+            index=index,
+            chain=chain,
+            fixed_code=fixed_code,
+        )
+        rest = indices[pos + 1:]
+        if ok:
+            if pool.bump(current["id"]) and rest:
+                pool.release(current["id"])
+                nxt = pool.take()
+                if nxt is None:
+                    _skip_lane_rest(job_id, count, state, state_lock, rest, chain, "hết proxy trong kho")
+                    return
+                current = nxt
+            continue
+        with state_lock:
+            last_error = str(state.get("last_error") or "")
+        if not _is_proxy_error(last_error):
+            pool.release(current["id"])
+            if rest:
+                _skip_lane_rest(job_id, count, state, state_lock, rest, chain, f"proxy {current['proxy']} lỗi ở TK trước")
+            return
+        pool.fail(current["id"], last_error)
+        pool.release(current["id"])
+        with state_lock:
+            state["failures"].append(f"Proxy {current['proxy']} lỗi — đã khóa, đổi sang proxy khác")
+        if not rest:
+            return
+        nxt = pool.take()
+        if nxt is None:
+            _skip_lane_rest(job_id, count, state, state_lock, rest, chain, "hết proxy trong kho")
+            return
+        current = nxt
+    pool.release(current["id"])
+
+
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False) -> None:
     if reset_stop:
         clear_stop()
     fixed_code = (fixed_code or "").strip().upper()
@@ -1414,6 +1590,8 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     if proxies:
         workers = min(len(proxies), max_workers)
         via = f" · {len(proxies)} proxy × {per_proxy} TK/proxy"
+        if use_proxy_warehouse:
+            via += " · Kho proxy"
     else:
         workers = _signup_workers(count, 0, max_workers)
         via = ""
@@ -1431,7 +1609,29 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         },
     )
     chain = None if fixed_code else _InviteChain(count, seed or latest_invite_code())
-    if proxies:
+    if proxies and use_proxy_warehouse:
+        proxy_pool = _ProxyPool(usable_proxies(per_proxy), per_proxy)
+        lane_indices = [list(range(j, count, workers)) for j in range(workers)]
+        lane_indices = [idxs for idxs in lane_indices if idxs]
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(
+                pool.map(
+                    lambda idxs: _run_signup_lane_pool(
+                        job_id,
+                        count=count,
+                        mode=mode,
+                        state=state,
+                        state_lock=state_lock,
+                        indices=idxs,
+                        chain=chain,
+                        fixed_code=fixed_code,
+                        pool=proxy_pool,
+                        per_proxy=per_proxy,
+                    ),
+                    lane_indices,
+                )
+            )
+    elif proxies:
         lanes = _signup_lanes(count, proxies, per_proxy)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             list(
@@ -1677,6 +1877,40 @@ def api_cards_delete_many():
     return jsonify({"ok": True, "removed": removed, **list_card_warehouses()})
 
 
+@app.get("/api/proxies")
+def api_proxies_list():
+    return jsonify({"ok": True, "proxies": list_proxies()})
+
+
+@app.post("/api/proxies")
+def api_proxies_add():
+    body = request.get_json(force=True, silent=True) or {}
+    lines = body.get("lines") or body.get("proxies") or []
+    if isinstance(lines, str):
+        lines = lines.splitlines()
+    result = add_proxies([str(item) for item in lines])
+    return jsonify({"ok": True, **result, "proxies": list_proxies()})
+
+
+@app.post("/api/proxies/delete")
+def api_proxies_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or ([body.get("id")] if body.get("id") else [])
+    removed = delete_proxies([str(item) for item in ids])
+    if not removed:
+        return jsonify({"ok": False, "error": "Không thấy proxy."}), 404
+    return jsonify({"ok": True, "removed": removed, "proxies": list_proxies()})
+
+
+@app.post("/api/proxies/reset")
+def api_proxies_reset():
+    body = request.get_json(force=True, silent=True) or {}
+    rec = reset_proxy((body.get("id") or "").strip())
+    if not rec:
+        return jsonify({"ok": False, "error": "Không thấy proxy."}), 404
+    return jsonify({"ok": True, "proxy": rec, "proxies": list_proxies()})
+
+
 @app.get("/api/created")
 def api_created_accounts():
     warehouse_id = (request.args.get("warehouse_id") or "").strip() or None
@@ -1743,6 +1977,10 @@ def api_signup():
     except (TypeError, ValueError):
         per_proxy = 5
     per_proxy = max(1, min(50, per_proxy))
+    # Ô proxy để trống = dùng Kho proxy (dán sẵn trong kho, tool tự quản lý).
+    use_proxy_warehouse = not proxies
+    if use_proxy_warehouse:
+        proxies = [p["proxy"] for p in usable_proxies(per_proxy)]
     try:
         max_workers = int(body.get("max_workers") or BATCH_PARALLEL)
     except (TypeError, ValueError):
@@ -1764,7 +2002,7 @@ def api_signup():
             "total": count,
         },
     )
-    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), daemon=True)
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), kwargs={"use_proxy_warehouse": use_proxy_warehouse}, daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy, "max_workers": max_workers})
 

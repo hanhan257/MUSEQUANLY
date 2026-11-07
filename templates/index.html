@@ -287,6 +287,7 @@
         <button type="button" class="btn-ghost" id="btnCreateAccount">Tạo TK không mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCreatePassword">Tạo TK có mật khẩu</button>
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ</button>
+        <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy</button>
         <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản</button>
         <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
@@ -324,13 +325,13 @@
         </div>
         <div class="created-kho" id="createdKhoList"></div>
         <div class="signup-proxy">
-          <label for="signupProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa số luồng ở ô Số luồng. Dạng ip:port hoặc ip:port:user:pass. Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
+          <label for="signupProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa số luồng ở ô Số luồng. Dạng ip:port hoặc ip:port:user:pass. Để trống ô này thì tool dùng Kho proxy (đã dán sẵn trong kho). Tài khoản lỗi hiện bên dưới và đóng Chrome, tài khoản khác vẫn chạy.</label>
           <textarea id="signupProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
         </div>
         <div class="signup-proxy">
           <label for="signupInviteCode">Mã mời cho tài khoản đầu tiên — tài khoản sau tự vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước. Để trống thì dùng mã đã lưu, chưa có mã thì tài khoản đầu bỏ qua.</label>
           <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
-          <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. 3 proxy × 5 TK thì tối đa 15 tài khoản.</label>
+          <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. 3 proxy × 5 TK thì tối đa 15 tài khoản. Ô proxy để trống thì dùng Kho proxy.</label>
           <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
           <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
           <input type="number" id="signupMaxWorkers" value="5" min="1" max="20" style="width:4.2rem;" />
@@ -455,6 +456,20 @@
         </div>
         <div class="panel"><div id="cardTable"></div></div>
       </div>
+      <div id="proxyView" hidden>
+        <div class="top">
+          <div>
+            <h2>Kho proxy</h2>
+            <div class="meta">Dán proxy vào kho, tool tự quản lý theo thứ tự từ proxy 1 đến hết. Khi tạo tài khoản mà ô proxy để trống, tool lấy proxy từ kho này. Proxy đủ số lượt (Tài khoản / proxy) thì tự khóa, proxy lỗi khi chạy thì tự khóa rồi đổi sang proxy sau. Lỗi không phải do proxy (thẻ, OTP, mã mời...) thì không khóa proxy.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-bottom:0.75rem;">
+          <textarea id="proxyPaste" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass" style="flex:1;min-height:4.5rem;"></textarea>
+          <button type="button" class="btn-primary" id="btnAddProxies">Thêm proxy</button>
+        </div>
+        <div class="meta" id="proxySummary" style="margin-bottom:0.5rem;"></div>
+        <div class="panel"><div id="proxyTable"></div></div>
+      </div>
     </main>
   </div>
 
@@ -555,16 +570,19 @@
     function applyView() {
       const signup = viewMode === 'signup' || viewMode === 'password';
       const cards = viewMode === 'cards';
+      const proxy = viewMode === 'proxy';
       const buff = viewMode === 'buff';
       const account = viewMode === 'account' || viewMode === 'kho';
       document.getElementById('signupView').hidden = !signup;
       document.getElementById('cardView').hidden = !cards;
+      document.getElementById('proxyView').hidden = !proxy;
       document.getElementById('buffView').hidden = !buff;
       document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = viewMode === 'password' ? 'Tạo TK có mật khẩu' : 'Tạo TK không mật khẩu';
       document.getElementById('btnCreateAccount').classList.toggle('active', viewMode === 'signup');
       document.getElementById('btnCreatePassword').classList.toggle('active', viewMode === 'password');
       document.getElementById('btnCards').classList.toggle('active', cards);
+      document.getElementById('btnProxyView').classList.toggle('active', proxy);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
       document.getElementById('btnAccountView').classList.toggle('active', account);
     }
@@ -1476,6 +1494,78 @@
     function signupProxyLines() {
       return document.getElementById('signupProxies').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     }
+    let proxyRows = [];
+    function proxyStatusBadge(p) {
+      if (p.status === 'error') return '<span class="badge die">Proxy lỗi</span>';
+      if (p.status === 'used') return '<span class="badge die">Đã đủ lượt</span>';
+      return '<span class="badge live">Sẵn sàng</span>';
+    }
+    function renderProxies(data) {
+      proxyRows = (data && data.proxies) || [];
+      const box = document.getElementById('proxyTable');
+      const ready = proxyRows.filter(p => p.status === 'ready').length;
+      const used = proxyRows.filter(p => p.status === 'used').length;
+      const err = proxyRows.filter(p => p.status === 'error').length;
+      document.getElementById('proxySummary').textContent = `${proxyRows.length} proxy · ${ready} sẵn sàng · ${used} đã đủ lượt · ${err} lỗi`;
+      if (!proxyRows.length) {
+        box.innerHTML = '<p class="hint">Chưa có proxy nào. Dán proxy vào ô trên rồi bấm Thêm proxy.</p>';
+        return;
+      }
+      const rows = proxyRows.map((p, i) => {
+        const actions = [];
+        if (p.status !== 'ready') actions.push(`<button type="button" class="btn-ghost btn-sm" data-proxy-reset="${p.id}">Mở lại</button>`);
+        actions.push(`<button type="button" class="btn-ghost btn-sm" data-proxy-del="${p.id}">Xóa</button>`);
+        return `<tr><td>${i + 1}</td><td><code>${escapeHtml(p.proxy || '')}</code></td><td>${p.uses || 0} lượt</td><td>${proxyStatusBadge(p)}</td><td class="muted">${escapeHtml(p.last_error || '')}</td><td>${actions.join(' ')}</td></tr>`;
+      }).join('');
+      box.innerHTML = `<table class="tbl"><thead><tr><th>#</th><th>Proxy</th><th>Lượt dùng</th><th>Trạng thái</th><th>Lỗi</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      box.querySelectorAll('[data-proxy-del]').forEach(btn => btn.addEventListener('click', () => deleteProxy(btn.getAttribute('data-proxy-del'))));
+      box.querySelectorAll('[data-proxy-reset]').forEach(btn => btn.addEventListener('click', () => resetProxy(btn.getAttribute('data-proxy-reset'))));
+    }
+    async function loadProxies() {
+      const res = await fetch('/api/proxies?t=' + Date.now(), { cache: 'no-store' });
+      renderProxies(await res.json());
+    }
+    async function deleteProxy(id) {
+      if (!confirm('Xóa proxy này khỏi kho?')) return;
+      const res = await fetch('/api/proxies/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      renderProxies(data);
+      toast('Đã xóa proxy');
+    }
+    async function resetProxy(id) {
+      const res = await fetch('/api/proxies/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      renderProxies(data);
+      toast('Đã mở lại proxy');
+    }
+    document.getElementById('btnProxyView').addEventListener('click', async () => {
+      viewMode = 'proxy';
+      applyView();
+      await loadProxies();
+    });
+    document.getElementById('btnAddProxies').addEventListener('click', async () => {
+      const lines = document.getElementById('proxyPaste').value.split(/\r?\n/);
+      const res = await fetch('/api/proxies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không thêm được proxy'); return; }
+      document.getElementById('proxyPaste').value = '';
+      renderProxies(data);
+      toast(`Đã thêm ${data.added || 0} proxy` + (data.duplicate ? ` · ${data.duplicate} trùng` : ''));
+    });
     function signupMode() {
       return viewMode === 'password' ? 'password' : 'plain';
     }
