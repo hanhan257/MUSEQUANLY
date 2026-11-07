@@ -78,7 +78,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v88"
+APP_BUILD = "signup-v89"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1315,6 +1315,19 @@ def _signup_one_run(
     return True
 
 
+def _signup_lanes(count: int, proxies: list[str], per_proxy: int) -> list[tuple[str, list[int]]]:
+    """Chia tài khoản cho các proxy theo vòng tròn để dùng hết luồng song song.
+    Mỗi proxy tối đa per_proxy TK, chạy lần lượt trên cùng 1 proxy. Chia theo
+    khối liên tục (proxy 1 ôm 10 TK đầu) sẽ dồn việc vào vài proxy đầu và các
+    proxy còn lại ngồi chơi dù còn luồng trống."""
+    n = len(proxies)
+    lanes = [
+        (proxy, list(range(j, count, n))[:per_proxy])
+        for j, proxy in enumerate(proxies)
+    ]
+    return [(proxy, idxs) for proxy, idxs in lanes if idxs]
+
+
 def _run_signup_lane(
     job_id: str,
     *,
@@ -1419,11 +1432,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     )
     chain = None if fixed_code else _InviteChain(count, seed or latest_invite_code())
     if proxies:
-        lanes = [
-            (proxy, list(range(j * per_proxy, min((j + 1) * per_proxy, count))))
-            for j, proxy in enumerate(proxies)
-        ]
-        lanes = [(proxy, idxs) for proxy, idxs in lanes if idxs]
+        lanes = _signup_lanes(count, proxies, per_proxy)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             list(
                 pool.map(
