@@ -219,6 +219,12 @@
     .badge.no { background: rgba(141, 152, 171, 0.16); color: var(--muted); }
     .badge.die { background: rgba(255, 107, 107, 0.18); color: #ff8d8d; }
     .badge.live { background: rgba(61, 214, 140, 0.16); color: var(--success); }
+    .dash { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.75rem; }
+    .dash .stat { flex: 1 1 8.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.55rem 0.8rem; }
+    .dash .stat b { display: block; font-size: 1.3rem; line-height: 1.25; }
+    .dash .stat span { color: var(--muted); font-size: 0.8rem; }
+    .dash .stat.good b { color: var(--success); }
+    .dash .stat.bad b { color: #ff8d8d; }
     .note-clip { display: grid; grid-template-columns: minmax(0, 34rem); max-width: 100%; }
     .note-clip:has(.row-note:empty) { display: none; }
     .row-note {
@@ -456,20 +462,21 @@
           <button type="button" class="btn-ghost btn-sm" data-card-filter="error">Thẻ lỗi</button>
           <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedCards" disabled>Xóa đã chọn</button>
         </div>
+        <div class="dash" id="cardDash"></div>
         <div class="panel"><div id="cardTable"></div></div>
       </div>
       <div id="proxyView" hidden>
         <div class="top">
           <div>
             <h2>Kho proxy</h2>
-            <div class="meta">Dán proxy vào kho, tool tự quản lý theo thứ tự từ proxy 1 đến hết. Khi tạo tài khoản mà ô proxy để trống, tool lấy proxy từ kho này. Proxy đủ số lượt (Tài khoản / proxy) thì tự khóa, proxy lỗi khi chạy thì tự khóa rồi đổi sang proxy sau. Lỗi không phải do proxy (thẻ, OTP, mã mời...) thì không khóa proxy.</div>
+            <div class="meta">Dán proxy vào kho, tool tự quản lý theo thứ tự từ proxy 1 đến hết. Khi tạo tài khoản mà ô proxy để trống, tool lấy proxy từ kho này. Proxy chạy đến khi lỗi mới khóa rồi đổi sang proxy sau, không giới hạn số lượt dùng. Lỗi không phải do proxy (thẻ, OTP, mã mời...) thì không khóa proxy.</div>
           </div>
         </div>
         <div class="toolbar" style="margin-bottom:0.75rem;">
           <textarea id="proxyPaste" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass" style="flex:1;min-height:4.5rem;"></textarea>
           <button type="button" class="btn-primary" id="btnAddProxies">Thêm proxy</button>
         </div>
-        <div class="meta" id="proxySummary" style="margin-bottom:0.5rem;"></div>
+        <div class="dash" id="proxyDash"></div>
         <div class="panel"><div id="proxyTable"></div></div>
       </div>
     </main>
@@ -1398,6 +1405,15 @@
         btn.classList.toggle('active', cardFilter === key);
         btn.textContent = (key === 'all' ? 'Tất cả' : key === 'ready' ? 'Sẵn sàng' : key === 'used' ? 'Đã đủ 10 lượt' : 'Thẻ lỗi') + ` (${counts[key]})`;
       });
+      const usedTotal = cardRows.reduce((s, c) => s + (c.uses || 0), 0);
+      const leftTotal = cardRows.reduce((s, c) => s + (cardStatus(c) === 'ready' ? Math.max(0, (c.use_limit || 10) - (c.uses || 0)) : 0), 0);
+      document.getElementById('cardDash').innerHTML = `
+        <div class="stat"><b>${counts.all}</b><span>Tổng thẻ</span></div>
+        <div class="stat good"><b>${counts.ready}</b><span>Sẵn sàng</span></div>
+        <div class="stat"><b>${counts.used}</b><span>Đã đủ 10 lượt</span></div>
+        <div class="stat bad"><b>${counts.error}</b><span>Thẻ lỗi</span></div>
+        <div class="stat"><b>${usedTotal}</b><span>Lượt đã dùng</span></div>
+        <div class="stat good"><b>${leftTotal}</b><span>Lượt còn lại</span></div>`;
       const rows = cardRows.filter(c => cardFilter === 'all' || cardStatus(c) === cardFilter);
       const root = document.getElementById('cardTable');
       if (!rows.length) {
@@ -1551,7 +1567,13 @@
       const box = document.getElementById('proxyTable');
       const ready = proxyRows.filter(p => p.status === 'ready').length;
       const err = proxyRows.filter(p => p.status === 'error').length;
-      document.getElementById('proxySummary').textContent = `${proxyRows.length} proxy · ${ready} sẵn sàng · ${err} lỗi`;
+      const usedTotal = proxyRows.reduce((s, p) => s + (p.uses || 0), 0);
+      document.getElementById('proxyDash').innerHTML = `
+        <div class="stat"><b>${proxyRows.length}</b><span>Tổng proxy</span></div>
+        <div class="stat good"><b>${ready}</b><span>Sẵn sàng</span></div>
+        <div class="stat bad"><b>${err}</b><span>Lỗi</span></div>
+        <div class="stat"><b>${usedTotal}</b><span>Tổng lượt đã dùng</span></div>
+        <div class="stat good"><b>Không giới hạn</b><span>Lượt còn lại</span></div>`;
       if (!proxyRows.length) {
         box.innerHTML = '<p class="hint">Chưa có proxy nào. Dán proxy vào ô trên rồi bấm Thêm proxy.</p>';
         return;
