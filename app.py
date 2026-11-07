@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v96"
+APP_BUILD = "signup-v97"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1295,7 +1295,7 @@ def _signup_one_run(
             "",
             "",
             proxy=proxy or None,
-            keep_open=count == 1,
+            keep_open=False,
             on_progress=on_progress,
             take_prior=take_prior,
             on_invite=on_invite,
@@ -1471,8 +1471,8 @@ def _is_proxy_error(text: str) -> bool:
 
 
 class _ProxyPool:
-    """Pool Kho proxy cho 1 lần chạy: phát proxy theo thứ tự đã dán, khóa khi
-    đủ lượt dùng hoặc lỗi khi chạy."""
+    """Pool Kho proxy cho 1 lần chạy: phát proxy theo thứ tự đã dán, chỉ khóa
+    khi lỗi khi chạy. Lượt dùng chỉ để đếm, không khóa proxy khi đủ lượt."""
 
     def __init__(self, records: list[dict], limit: int):
         self.limit = max(1, int(limit or 1))
@@ -1490,8 +1490,6 @@ class _ProxyPool:
             for it in self._items:
                 if it["id"] in self._in_use or it["id"] in self._dead:
                     continue
-                if it["uses"] >= self.limit:
-                    continue
                 self._in_use.add(it["id"])
                 return dict(it)
             return None
@@ -1501,16 +1499,15 @@ class _ProxyPool:
             self._in_use.discard(str(proxy_id))
 
     def bump(self, proxy_id: str) -> bool:
-        """+1 lượt dùng sau 1 TK tạo thành công. Trả True nếu proxy vừa đủ giới hạn (đã khóa)."""
+        """+1 lượt dùng sau 1 TK tạo thành công. Lượt dùng không khóa proxy
+        nữa nên luôn trả False (lane giữ nguyên proxy đến khi lỗi mới đổi)."""
         with self._lock:
             rec = bump_proxy_use(proxy_id, self.limit)
             for it in self._items:
                 if it["id"] == str(proxy_id):
                     it["uses"] = int((rec or {}).get("uses") or it["uses"] + 1)
-                    if rec and rec.get("status") == "used":
-                        self._dead.add(it["id"])
                     break
-            return bool(rec and rec.get("status") == "used")
+            return False
 
     def fail(self, proxy_id: str, error: str = "") -> None:
         with self._lock:
@@ -1531,9 +1528,10 @@ def _run_signup_lane_pool(
     pool: _ProxyPool,
     per_proxy: int,
 ) -> None:
-    """Một lane dùng Kho proxy: lấy proxy từ pool; proxy đủ lượt hoặc lỗi
-    (lỗi mạng/proxy) thì khóa lại rồi đổi sang proxy mới và làm tiếp các TK
-    còn lại. Lỗi không phải do proxy (thẻ, OTP, mã mời...) thì dừng lane như cũ."""
+    """Một lane dùng Kho proxy: lấy proxy từ pool; proxy lỗi (lỗi mạng/proxy)
+    thì khóa lại rồi đổi sang proxy mới và làm tiếp các TK còn lại. Lượt dùng
+    không khóa proxy nữa nên lane giữ nguyên proxy đến khi lỗi mới đổi. Lỗi
+    không phải do proxy (thẻ, OTP, mã mời...) thì dừng lane như cũ."""
     if not indices:
         return
     current = pool.take()
@@ -1557,13 +1555,7 @@ def _run_signup_lane_pool(
         )
         rest = indices[pos + 1:]
         if ok:
-            if pool.bump(current["id"]) and rest:
-                pool.release(current["id"])
-                nxt = pool.take()
-                if nxt is None:
-                    _skip_lane_rest(job_id, count, state, state_lock, rest, chain, "hết proxy trong kho")
-                    return
-                current = nxt
+            pool.bump(current["id"])
             continue
         with state_lock:
             last_error = str(state.get("last_error") or "")

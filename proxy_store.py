@@ -1,8 +1,8 @@
-"""Kho proxy: lưu proxy dán vào, đếm lượt dùng, tự khóa khi đủ lượt hoặc lỗi.
+"""Kho proxy: lưu proxy dán vào, đếm lượt dùng, chỉ khóa khi lỗi.
 
 Mỗi proxy là 1 dòng (ip:port hoặc ip:port:user:pass). Tool dùng theo thứ tự
-đã dán: proxy nào đủ số lượt (Tài khoản / proxy) thì khóa, proxy nào lỗi
-khi chạy thì khóa rồi đổi sang proxy sau.
+đã dán: proxy chạy đến khi lỗi thì khóa rồi đổi sang proxy sau. Lượt dùng
+chỉ để đếm, không khóa proxy khi đủ lượt.
 """
 
 from __future__ import annotations
@@ -33,6 +33,15 @@ def _load() -> dict[str, Any]:
             return {"proxies": []}
         if not isinstance(data, dict) or not isinstance(data.get("proxies"), list):
             return {"proxies": []}
+        # Hồi xưa proxy bị khóa khi đủ lượt (status "used"); giờ lượt dùng không
+        # khóa nữa nên mở lại hết các proxy chỉ bị khóa vì đủ lượt.
+        changed = False
+        for p in data.get("proxies", []):
+            if (p.get("status") or "") == "used":
+                p["status"] = "ready"
+                changed = True
+        if changed:
+            _save(data)
         return data
 
 
@@ -106,23 +115,23 @@ def reset_proxy(proxy_id: str) -> dict[str, Any] | None:
 
 
 def usable_proxies(limit: int) -> list[dict[str, Any]]:
-    """Proxy còn dùng được: trạng thái ready và lượt dùng < giới hạn, theo thứ tự đã dán."""
-    limit = max(1, int(limit or 1))
+    """Proxy còn dùng được: trạng thái ready, theo thứ tự đã dán. Lượt dùng
+    không khóa proxy nữa nên không lọc theo giới hạn (limit chỉ giữ lại để
+    tương thích chữ ký hàm cũ)."""
     return [
         dict(p)
         for p in _load().get("proxies", [])
-        if (p.get("status") or "ready") == "ready" and int(p.get("uses") or 0) < limit
+        if (p.get("status") or "ready") == "ready"
     ]
 
 
 def bump_proxy_use(proxy_id: str, limit: int) -> dict[str, Any] | None:
-    """+1 lượt dùng sau 1 tài khoản tạo thành công. Đủ giới hạn thì khóa (status used)."""
+    """+1 lượt dùng sau 1 tài khoản tạo thành công. Chỉ đếm lượt, không khóa
+    proxy khi đủ giới hạn nữa (limit chỉ giữ lại để tương thích chữ ký hàm cũ)."""
     data = _load()
     for p in data.get("proxies", []):
         if str(p.get("id")) == str(proxy_id):
             p["uses"] = int(p.get("uses") or 0) + 1
-            if p["uses"] >= max(1, int(limit or 1)):
-                p["status"] = "used"
             _save(data)
             return dict(p)
     return None
