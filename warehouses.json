@@ -1,5 +1,5 @@
 {
-  "active_warehouse_id": "8070255044",
+  "active_warehouse_id": "dbe67d5236",
   "warehouses": [
     {
       "id": "903a028c15",
@@ -809,6 +809,12 @@
       "id": "8070255044",
       "name": "Kho 5",
       "accounts": []
+    },
+    {
+      "id": "dbe67d5236",
+      "name": "Kho 6",
+      "accounts": [],
+      "max": 50
     },
     {
       "id": "0f99fd8e54",
@@ -2599,7 +2605,8 @@
           "created_at": "07/11/2026 11:44",
           "kind": "password",
           "proxy": "67.227.42.150:6127:pexmqfcj:y8d7o9w7j0uz",
-          "invite_code": "02O6NQ"
+          "invite_code": "02O6NQ",
+          "redeemed_invite_code": "29F8HZ"
         },
         {
           "email": "han557694478@mailto.plus",
@@ -2877,7 +2884,8 @@
           "created_at": "07/11/2026 11:58",
           "kind": "password",
           "proxy": "217.117.166.23:5665:pexmqfcj:y8d7o9w7j0uz",
-          "invite_code": "5VBO0Y"
+          "invite_code": "5VBO0Y",
+          "redeemed_invite_code": "02O6NQ"
         },
         {
           "email": "han992495286@mailto.plus",

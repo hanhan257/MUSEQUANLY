@@ -20,8 +20,8 @@
       "id": "px_c724ae8551",
       "proxy": "67.227.42.150:6127:pexmqfcj:y8d7o9w7j0uz",
       "uses": 33,
-      "status": "ready",
-      "last_error": "",
+      "status": "error",
+      "last_error": "han271129724@mailto.plus: Page.goto: net::ERR_ABORTED; maybe frame was detached?\nCall log:\n  - navigating to \"https://muse.ai/\", waiting until \"domcontentloaded\". Đã đóng Chrome",
       "created_at": "2026-11-07T01:43:24Z"
     },
     {
