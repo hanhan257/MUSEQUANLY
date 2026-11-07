@@ -57,10 +57,10 @@ def email_from_lay2fa_url(url: str) -> str | None:
     return None
 
 
-def parse_account_line(line: str) -> tuple[str, str, str, str] | None:
+def parse_account_line(line: str) -> tuple[str, str, str, str, str] | None:
     """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú,
-    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư.
-    Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư)."""
+    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy.
+    Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư, proxy)."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
@@ -72,6 +72,7 @@ def parse_account_line(line: str) -> tuple[str, str, str, str] | None:
     second = parts[1] if len(parts) > 1 else ""
     secret = parts[2] if len(parts) > 2 else ""
     mail_password = parts[3] if len(parts) > 3 else ""
+    proxy = parts[4] if len(parts) > 4 else ""
 
     if second and not second.lower().startswith(("http://", "https://")) and "://" not in second:
         url = second
@@ -84,7 +85,7 @@ def parse_account_line(line: str) -> tuple[str, str, str, str] | None:
             email = inferred
         else:
             return None
-    return email, url, secret, mail_password
+    return email, url, secret, mail_password, proxy
 
 
 def fetch_2fa_live_code(secret: str) -> str:

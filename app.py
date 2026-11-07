@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v93"
+APP_BUILD = "signup-v94"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -288,8 +288,11 @@ def api_save_accounts():
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret, mail_password = parsed
+        email, lay2fa_url, totp_secret, mail_password, line_proxy = parsed
+        # Proxy ở ô phía dưới (dán mới) thắng proxy có sẵn trong dòng.
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
+        if not proxy:
+            proxy = line_proxy
         index += 1
         key = email.lower()
         if key in seen:
@@ -320,7 +323,7 @@ def api_import_accounts():
         parsed = parse_account_line(str(line))
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret, mail_password = parsed
+        email, lay2fa_url, totp_secret, mail_password, line_proxy = parsed
         key = email.lower()
         if key not in by_email:
             added += 1
@@ -329,7 +332,7 @@ def api_import_accounts():
             "email": email,
             "lay2fa_url": lay2fa_url,
             "totp_secret": totp_secret or previous.get("totp_secret", ""),
-            "proxy": previous.get("proxy", ""),
+            "proxy": line_proxy or previous.get("proxy", ""),
             "mailtm_password": mail_password or previous.get("mailtm_password", ""),
         }
     merged = list(by_email.values())

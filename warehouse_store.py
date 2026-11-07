@@ -106,18 +106,19 @@ def migrate_from_legacy_accounts_txt() -> None:
 
 
 def _account_line(account: dict[str, str]) -> str:
-    """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư.
-    Ô 3 và ô 4 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập được."""
-    line = f"{account['email']}|{account.get('lay2fa_url', '')}"
-    secret = (account.get("totp_secret") or "").strip()
-    mail_pw = (account.get("mailtm_password") or "").strip()
-    if secret:
-        line += f"|{secret}"
-    if mail_pw:
-        if not secret:
-            line += "|"
-        line += f"|{mail_pw}"
-    return line
+    """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy.
+    Ô 3, 4, 5 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập
+    được và giữ nguyên proxy. Proxy ở ô 5, dán proxy mới ở ô Proxy phía dưới sẽ thay nó."""
+    parts = [
+        account["email"],
+        account.get("lay2fa_url", ""),
+        (account.get("totp_secret") or "").strip(),
+        (account.get("mailtm_password") or "").strip(),
+        (account.get("proxy") or "").strip(),
+    ]
+    while parts and not parts[-1].strip():
+        parts.pop()
+    return "|".join(parts)
 
 
 def export_login_data(warehouse_id: str | None = None, emails: set[str] | None = None) -> tuple[str, int]:
@@ -162,9 +163,12 @@ def _parse_text(raw: str, proxies_raw: str = "") -> list[dict[str, str]]:
         parsed = parse_account_line(line)
         if not parsed:
             continue
-        email, lay2fa_url, totp_secret, mail_password = parsed
+        email, lay2fa_url, totp_secret, mail_password, line_proxy = parsed
         key = email.lower()
+        # Proxy ở ô phía dưới (dán mới) thắng proxy có sẵn trong dòng.
         proxy = proxy_lines[index].strip() if index < len(proxy_lines) else ""
+        if not proxy:
+            proxy = line_proxy
         index += 1
         if key in seen:
             continue
