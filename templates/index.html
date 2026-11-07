@@ -96,7 +96,7 @@
     .side-count { position: absolute; right: 0.81rem; top: 50%; transform: translateY(-50%); font-size: 0.81rem; color: var(--muted); font-weight: 700; }
     .side-actions .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); box-shadow: inset 3px 0 0 #f472b6, 0 0 16px rgba(236, 72, 153, 0.18); }
     .side-actions .btn-ghost:hover:not(:disabled) { background: rgba(236, 72, 153, 0.08); border-color: rgba(236, 72, 153, 0.35); }
-    #cardFilterBar .btn-ghost.active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); }
+    #cardFilterBar .btn-ghost.active { background: rgba(236, 72, 153, 0.18); border-color: rgba(244, 114, 182, 0.55); box-shadow: inset 3px 0 0 #f472b6; color: #f9a8d4; }
     #signupTools [data-signup-count].active { background: rgba(8, 102, 255, 0.16); border-color: rgba(8, 102, 255, 0.45); box-shadow: inset 3px 0 0 #f472b6; }
     .created-kho { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
     .signup-proxy { margin-bottom: 0.75rem; }
@@ -221,11 +221,15 @@
     .badge.die { background: rgba(255, 107, 107, 0.18); color: #ff8d8d; }
     .badge.live { background: rgba(61, 214, 140, 0.16); color: var(--success); }
     .dash { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.75rem; }
-    .dash .stat { flex: 1 1 8.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.55rem 0.8rem; }
-    .dash .stat b { display: block; font-size: 1.3rem; line-height: 1.25; }
+    .dash .stat { flex: 1 1 8.5rem; background: linear-gradient(160deg, #1b2330, var(--surface)); border: 1px solid rgba(244, 114, 182, 0.35); border-radius: 0.75rem; padding: 0.6rem 0.85rem; box-shadow: inset 0 2px 0 rgba(244, 114, 182, 0.55), 0 4px 14px rgba(236, 72, 153, 0.10); transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+    .dash .stat:hover { transform: translateY(-2px); border-color: rgba(244, 114, 182, 0.7); box-shadow: inset 0 2px 0 rgba(244, 114, 182, 0.9), 0 8px 20px rgba(236, 72, 153, 0.22); }
+    .dash .stat b { display: block; font-size: 1.4rem; line-height: 1.25; }
     .dash .stat span { color: var(--muted); font-size: 0.8rem; }
     .dash .stat.good b { color: var(--success); }
     .dash .stat.bad b { color: #ff8d8d; }
+    .dash .stat.hero { background: linear-gradient(135deg, rgba(236, 72, 153, 0.32), rgba(8, 102, 255, 0.16)); border-color: rgba(244, 114, 182, 0.75); box-shadow: inset 0 2px 0 rgba(244, 114, 182, 0.95), 0 0 20px rgba(236, 72, 153, 0.30); }
+    .dash .stat.hero b { color: #f9a8d4; }
+    .dash .stat.hero span { color: #fbcfe8; }
     .note-clip { display: grid; grid-template-columns: minmax(0, 34rem); max-width: 100%; }
     .note-clip:has(.row-note:empty) { display: none; }
     .row-note {
@@ -1411,7 +1415,7 @@
         <div class="stat"><b>${counts.used}</b><span>Đã đủ 10 lượt</span></div>
         <div class="stat bad"><b>${counts.error}</b><span>Thẻ lỗi</span></div>
         <div class="stat"><b>${usedTotal}</b><span>Lượt đã dùng</span></div>
-        <div class="stat good"><b>${leftTotal}</b><span>Lượt còn lại</span></div>`;
+        <div class="stat good hero"><b>${leftTotal}</b><span>Lượt còn lại</span></div>`;
       const rows = cardRows.filter(c => cardFilter === 'all' || cardStatus(c) === cardFilter);
       const root = document.getElementById('cardTable');
       if (!rows.length) {
@@ -1570,7 +1574,7 @@
         <div class="stat good"><b>${ready}</b><span>Sẵn sàng</span></div>
         <div class="stat bad"><b>${err}</b><span>Lỗi</span></div>
         <div class="stat"><b>${usedTotal}</b><span>Tổng lượt đã dùng</span></div>
-        <div class="stat good"><b>Không giới hạn</b><span>Lượt còn lại</span></div>`;
+        <div class="stat good hero"><b>Không giới hạn</b><span>Lượt còn lại</span></div>`;
       if (!proxyRows.length) {
         box.innerHTML = '<p class="hint">Chưa có proxy nào. Dán proxy vào ô trên rồi bấm Thêm proxy.</p>';
         return;
