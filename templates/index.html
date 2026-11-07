@@ -571,6 +571,8 @@
       }
       const perWhInput = document.getElementById('accountPerWarehouse');
       if (perWhInput && document.activeElement !== perWhInput) perWhInput.value = warehouseSummary.max_per_warehouse;
+      const createdMaxInput = document.getElementById('createdKhoMax');
+      if (createdMaxInput && document.activeElement !== createdMaxInput) createdMaxInput.value = warehouseSummary.max_per_warehouse;
       document.getElementById('khoTitle').textContent = active ? active.name : 'Kho';
       document.getElementById('khoMeta').textContent = !active
         ? ''
