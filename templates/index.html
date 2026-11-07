@@ -387,7 +387,7 @@
           </div>
         </div>
         <div class="signup-proxy kho-create-bar">
-          <label for="accountPerWarehouse">Số TK / kho — mặc định 50, sửa được (1–1000).</label>
+          <label for="accountPerWarehouse">Số TK / kho — mặc định cho kho mới tạo (1–1000). Bấm "Tạo kho mới" sẽ hỏi lại, sửa riêng từng kho được.</label>
           <input type="number" id="accountPerWarehouse" value="50" min="1" max="1000" style="width:5.5rem;" />
           <button type="button" class="btn-primary" id="btnSavePerWarehouse">Lưu</button>
           <span class="bar-sep"></span>
@@ -1348,13 +1348,15 @@
     });
     document.getElementById('btnOpenImportAccount').addEventListener('click', openDrawer);
     document.getElementById('btnNewWarehouseAccount').addEventListener('click', async () => {
-      const res = await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const maxAccounts = askWarehouseMax();
+      if (maxAccounts === null) return;
+      const res = await fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_accounts: maxAccounts }) });
       const data = await res.json();
       if (data.ok && data.warehouse && data.warehouse.id) {
         await fetch('/api/warehouses/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.warehouse.id }) });
       }
       await refreshAll();
-      toast('Đã tạo kho mới — dán tài khoản vào kho này');
+      toast(`Đã tạo kho mới (${maxAccounts} TK / kho) — dán tài khoản vào kho này`);
       openDrawer();
     });
     document.getElementById('btnSavePerWarehouse').addEventListener('click', async () => {
@@ -1764,12 +1766,24 @@
       if (!data.ok) { toast('Không dừng được'); return; }
       toast('Đã gửi lệnh dừng');
     });
+    function askWarehouseMax() {
+      const input = document.getElementById('accountPerWarehouse');
+      const def = input ? (Number(input.value) || 50) : 50;
+      const raw = prompt('Số tài khoản tối đa cho kho mới (1–1000):', String(def));
+      if (raw === null) return null;
+      const n = Math.floor(Number(raw));
+      if (!Number.isFinite(n) || n < 1) { toast('Số TK / kho phải từ 1 đến 1000'); return null; }
+      return Math.min(1000, Math.max(1, n));
+    }
+
     async function createCreatedWarehouse() {
+      const maxAccounts = askWarehouseMax();
+      if (maxAccounts === null) return;
       const kind = viewMode === 'password' ? 'password' : 'plain';
       const res = await fetch('/api/created/warehouses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind }),
+        body: JSON.stringify({ kind, max_accounts: maxAccounts }),
       });
       const data = await res.json();
       if (!data.ok) { toast(data.error || 'Không tạo được kho'); return; }

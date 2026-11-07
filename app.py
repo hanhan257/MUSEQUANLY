@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v100"
+APP_BUILD = "signup-v101"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -196,7 +196,7 @@ def api_warehouses_set_active():
 @app.post("/api/warehouses")
 def api_warehouses_create():
     body = request.get_json(force=True, silent=True) or {}
-    wh = create_warehouse(body.get("name"))
+    wh = create_warehouse(body.get("name"), max_accounts=body.get("max_accounts"))
     return jsonify({"ok": True, "warehouse": wh, "summary": list_warehouses_summary()})
 
 
@@ -2047,8 +2047,8 @@ def api_created_accounts():
 def api_created_warehouses_create():
     body = request.get_json(force=True, silent=True) or {}
     kind = "password" if body.get("kind") == "password" else "plain"
-    wh = create_created_warehouse(kind, body.get("name"))
-    return jsonify({"ok": True, "warehouse": {"id": wh.get("id"), "name": wh.get("name"), "kind": kind}, **list_created_accounts(wh.get("id"), kind)})
+    wh = create_created_warehouse(kind, body.get("name"), max_accounts=body.get("max_accounts"))
+    return jsonify({"ok": True, "warehouse": {"id": wh.get("id"), "name": wh.get("name"), "kind": kind, "max": wh.get("max")}, **list_created_accounts(wh.get("id"), kind)})
 
 
 @app.post("/api/created/accounts/delete")

@@ -46,6 +46,20 @@ def set_accounts_per_warehouse(value: int) -> int:
     data["accounts_per_warehouse"] = value
     _save(data)
     return value
+
+
+def _clamp_max(value: Any, default: int) -> int:
+    """Sức chứa một kho, kẹp trong 1–1000; giá trị không hợp lệ thì lấy mặc định."""
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(MIN_ACCOUNTS_PER_WAREHOUSE, min(MAX_ACCOUNTS_PER_WAREHOUSE, value))
+
+
+def _warehouse_max(wh: dict[str, Any] | None, data: dict[str, Any] | None = None) -> int:
+    """Sức chứa riêng của kho ('max' lúc tạo); kho cũ chưa có thì dùng cài đặt chung."""
+    return _clamp_max((wh or {}).get("max"), get_accounts_per_warehouse(data))
 _CREATED_LOCK = threading.Lock()
 
 
@@ -361,7 +375,7 @@ def list_warehouses_summary() -> dict[str, Any]:
                 "name": wh.get("name", "Kho"),
                 "kind": "error" if is_error else "normal",
                 "count": len(acc),
-                "max": None if is_error else get_accounts_per_warehouse(data),
+                "max": None if is_error else _warehouse_max(wh, data),
                 "active": wh["id"] == data.get("active_warehouse_id"),
             }
         )
@@ -404,8 +418,8 @@ def save_active_accounts(rows: list[dict[str, str]]) -> None:
     wh = get_warehouse(wh_id, data)
     if not wh:
         return
-    if not _is_error_warehouse(wh) and len(rows) > get_accounts_per_warehouse(data):
-        raise ValueError(f"Mỗi kho tối đa {get_accounts_per_warehouse(data)} tài khoản.")
+    if not _is_error_warehouse(wh) and len(rows) > _warehouse_max(wh, data):
+        raise ValueError(f"Mỗi kho tối đa {_warehouse_max(wh, data)} tài khoản.")
     known = _mailtm_passwords(data)
     wh["accounts"] = [_keep_mailtm_password(row, known) for row in rows]
     _save(data)
@@ -460,7 +474,7 @@ def import_split_append(raw: str, proxies_raw: str = "") -> dict[str, Any]:
             if _is_error_warehouse(wh):
                 continue
             accs = wh.setdefault("accounts", [])
-            if len(accs) < get_accounts_per_warehouse():
+            if len(accs) < _warehouse_max(wh, data):
                 accs.append(acc)
                 placed = True
                 break
@@ -542,12 +556,13 @@ def _append_created_row(data: dict[str, Any], row: dict[str, Any], kind: str = "
     same = [wh for wh in warehouses if wh.get("kind") == kind]
     active_key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
     active = next((wh for wh in same if wh.get("id") == data.get(active_key)), None)
-    if active is not None and len(active.get("accounts") or []) < get_accounts_per_warehouse(data):
+    if active is not None and len(active.get("accounts") or []) < _warehouse_max(active, data):
         target = active
     else:
-        target = next((wh for wh in same if len(wh.get("accounts") or []) < get_accounts_per_warehouse(data)), None)
+        target = next((wh for wh in same if len(wh.get("accounts") or []) < _warehouse_max(wh, data)), None)
     if target is None:
-        target = {"id": _new_id(), "name": f"Kho {len(same) + 1}", "kind": kind, "accounts": []}
+        base_max = _warehouse_max(active, data) if active is not None else get_accounts_per_warehouse(data)
+        target = {"id": _new_id(), "name": f"Kho {len(same) + 1}", "kind": kind, "accounts": [], "max": base_max}
         warehouses.append(target)
     row["kind"] = kind
     target.setdefault("accounts", []).append(row)
@@ -555,8 +570,9 @@ def _append_created_row(data: dict[str, Any], row: dict[str, Any], kind: str = "
     return target
 
 
-def create_created_warehouse(kind: str = "plain", name: str | None = None) -> dict[str, Any]:
-    """Kho trống riêng cho mail không mật khẩu hoặc mail có mật khẩu."""
+def create_created_warehouse(kind: str = "plain", name: str | None = None, max_accounts: Any = None) -> dict[str, Any]:
+    """Kho trống riêng cho mail không mật khẩu hoặc mail có mật khẩu.
+    max_accounts: sức chứa riêng của kho này (1–1000); không đưa thì lấy cài đặt chung."""
     kind = "password" if kind == "password" else "plain"
     with _CREATED_LOCK:
         data = ensure_initialized()
@@ -573,6 +589,7 @@ def create_created_warehouse(kind: str = "plain", name: str | None = None) -> di
             "name": (name or "").strip() or f"Kho {number}",
             "kind": kind,
             "accounts": [],
+            "max": _clamp_max(max_accounts, get_accounts_per_warehouse(data)),
         }
         warehouses.append(wh)
         key = "active_created_password_id" if kind == "password" else "active_created_plain_id"
@@ -717,7 +734,7 @@ def list_created_accounts(warehouse_id: str | None = None, kind: str = "plain") 
             "id": wh.get("id"),
             "name": wh.get("name") or "Kho",
             "count": len(wh.get("accounts") or []),
-            "max": get_accounts_per_warehouse(data),
+            "max": _warehouse_max(wh, data),
             "kind": kind,
             "active": current is not None and wh.get("id") == current.get("id"),
         }
@@ -766,7 +783,8 @@ def delete_created_warehouse(warehouse_id: str) -> dict[str, Any] | None:
 
 
 def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "plain", proxy: str = "") -> dict[str, Any]:
-    """Lưu mail vào kho tạo riêng. Đủ 50 thì sang kho tiếp theo."""
+    """Lưu mail vào kho tạo riêng. Đủ sức chứa của kho thì sang kho tiếp theo (kho mới
+    nối tiếp giữ nguyên sức chứa của kho vừa đầy)."""
     from datetime import datetime
 
     with _CREATED_LOCK:
@@ -887,10 +905,12 @@ def set_invite_chain_code(code: str) -> None:
         _save(data)
 
 
-def create_warehouse(name: str | None = None) -> dict[str, Any]:
+def create_warehouse(name: str | None = None, max_accounts: Any = None) -> dict[str, Any]:
+    """Tạo kho thường mới. max_accounts: sức chứa riêng của kho này (1–1000);
+    không đưa thì lấy cài đặt chung."""
     data = ensure_initialized()
     n = len(_regular_warehouses(data)) + 1
-    wh = {"id": _new_id(), "name": name or f"Kho {n}", "accounts": []}
+    wh = {"id": _new_id(), "name": name or f"Kho {n}", "accounts": [], "max": _clamp_max(max_accounts, get_accounts_per_warehouse(data))}
     error = _find_error_warehouse(data)
     if error:
         data["warehouses"].insert(data["warehouses"].index(error), wh)
