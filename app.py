@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v94"
+APP_BUILD = "signup-v95"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1587,6 +1587,10 @@ def _run_signup_lane_pool(
 
 
 def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False) -> None:
+    """Chạy bù đến đủ số TK: count là số tài khoản TẠO THÀNH CÔNG cần có, không
+    phải số lần thử. Tài khoản lỗi/bỏ qua được chạy bù ở vòng sau cho đến khi
+    đủ số đó, hoặc đến khi 1 vòng không tạo thêm được TK nào (hết proxy/thẻ),
+    hoặc người dùng bấm Dừng."""
     if reset_stop:
         clear_stop()
     fixed_code = (fixed_code or "").strip().upper()
@@ -1595,8 +1599,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     per_proxy = max(1, min(50, int(per_proxy or 5)))
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
     set_signup_turn_gap(3)
-    if proxies:
-        count = min(count, len(proxies) * per_proxy)
+    target = max(0, int(count or 0))
     state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
     state_lock = threading.Lock()
     if proxies:
@@ -1605,95 +1608,170 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         if use_proxy_warehouse:
             via += " · Kho proxy"
     else:
-        workers = _signup_workers(count, 0, max_workers)
+        workers = _signup_workers(target, 0, max_workers)
         via = ""
-    seed_note = f" · buff mã {fixed_code} cho cả {count} TK" if fixed_code else (f" · mã mời {seed} cho TK đầu" if seed else "")
+    seed_note = f" · buff mã {fixed_code} cho cả {target} TK" if fixed_code else (f" · mã mời {seed} cho TK đầu" if seed else "")
     _set_job(
         job_id,
         {
             "status": "running",
             "step": "batch",
-            "detail": f"Tạo {count} tài khoản" + via + seed_note + (f" · {workers} luồng" if workers > 1 else ""),
-            "total": count,
+            "detail": f"Tạo {target} tài khoản" + via + seed_note + (f" · {workers} luồng" if workers > 1 else ""),
+            "total": target,
             "done_count": 0,
             "ok_count": 0,
             "fail_count": 0,
         },
     )
-    chain = None if fixed_code else _InviteChain(count, seed or latest_invite_code())
-    if proxies and use_proxy_warehouse:
-        proxy_pool = _ProxyPool(usable_proxies(per_proxy), per_proxy)
-        lane_indices = [list(range(j, count, workers)) for j in range(workers)]
-        lane_indices = [idxs for idxs in lane_indices if idxs]
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            list(
-                pool.map(
-                    lambda idxs: _run_signup_lane_pool(
-                        job_id,
-                        count=count,
-                        mode=mode,
-                        state=state,
-                        state_lock=state_lock,
-                        indices=idxs,
-                        chain=chain,
-                        fixed_code=fixed_code,
-                        pool=proxy_pool,
-                        per_proxy=per_proxy,
-                    ),
-                    lane_indices,
+    if target < 1:
+        _set_job(job_id, {"status": "error", "step": "done", "detail": "Số tài khoản phải từ 1 trở lên.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
+        return
+    rounds = 0
+    no_progress = False
+    used_pool = False
+    while state["ok"] < target and not stop_requested():
+        deficit = target - state["ok"]
+        # Số lần thử tối đa mỗi vòng: proxy dán sẵn thì mỗi proxy tối đa
+        # per_proxy TK/vòng; Kho proxy thì đọc lại danh sách còn dùng được.
+        pool_records: list[dict] = []
+        if use_proxy_warehouse:
+            pool_records = usable_proxies(per_proxy)
+            if pool_records:
+                proxies = [str(p.get("proxy") or "") for p in pool_records if str(p.get("proxy") or "").strip()]
+            elif used_pool:
+                # Kho proxy đã cạn sau các vòng trước: dừng bù, không chạy trần.
+                no_progress = True
+                break
+        if proxies:
+            round_count = min(deficit, len(proxies) * per_proxy)
+        else:
+            round_count = deficit
+        if round_count < 1:
+            no_progress = True
+            break
+        rounds += 1
+        ok_before = state["ok"]
+        round_seed = seed if rounds == 1 else latest_invite_code()
+        chain = None if fixed_code else _InviteChain(round_count, round_seed)
+        if proxies and use_proxy_warehouse:
+            used_pool = True
+            workers = min(len(proxies), max_workers)
+            proxy_pool = _ProxyPool(pool_records, per_proxy)
+            lane_indices = [list(range(j, round_count, workers)) for j in range(workers)]
+            lane_indices = [idxs for idxs in lane_indices if idxs]
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                list(
+                    pool.map(
+                        lambda idxs: _run_signup_lane_pool(
+                            job_id,
+                            count=target,
+                            mode=mode,
+                            state=state,
+                            state_lock=state_lock,
+                            indices=idxs,
+                            chain=chain,
+                            fixed_code=fixed_code,
+                            pool=proxy_pool,
+                            per_proxy=per_proxy,
+                        ),
+                        lane_indices,
+                    )
                 )
-            )
-    elif proxies:
-        lanes = _signup_lanes(count, proxies, per_proxy)
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            list(
-                pool.map(
-                    lambda lane: _run_signup_lane(
-                        job_id,
-                        count=count,
-                        mode=mode,
-                        state=state,
-                        state_lock=state_lock,
-                        proxy=lane[0],
-                        indices=lane[1],
-                        chain=chain,
-                        fixed_code=fixed_code,
-                    ),
-                    lanes,
+        elif proxies:
+            workers = min(len(proxies), max_workers)
+            lanes = _signup_lanes(round_count, proxies, per_proxy)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                list(
+                    pool.map(
+                        lambda lane: _run_signup_lane(
+                            job_id,
+                            count=target,
+                            mode=mode,
+                            state=state,
+                            state_lock=state_lock,
+                            proxy=lane[0],
+                            indices=lane[1],
+                            chain=chain,
+                            fixed_code=fixed_code,
+                        ),
+                        lanes,
+                    )
                 )
-            )
-    else:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            list(
-                pool.map(
-                    lambda index: _signup_one(
-                        job_id,
-                        count=count,
-                        mode=mode,
-                        state=state,
-                        state_lock=state_lock,
-                        proxy="",
-                        index=index,
-                        chain=chain,
-                        fixed_code=fixed_code,
-                    ),
-                    range(count),
+        else:
+            workers = _signup_workers(round_count, 0, max_workers)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                list(
+                    pool.map(
+                        lambda index: _signup_one(
+                            job_id,
+                            count=target,
+                            mode=mode,
+                            state=state,
+                            state_lock=state_lock,
+                            proxy="",
+                            index=index,
+                            chain=chain,
+                            fixed_code=fixed_code,
+                        ),
+                        range(round_count),
+                    )
                 )
+        if chain is not None:
+            try:
+                set_invite_chain_code(chain.tail())
+            except Exception:
+                pass
+        with state_lock:
+            state["failures"] = list(state["failures"][-20:])
+        if state["ok"] == ok_before:
+            # Vòng này không tạo thêm được TK nào: hết proxy/thẻ hoặc lỗi
+            # giống nhau ở mọi lần thử — dừng để khỏi chạy vô hạn.
+            no_progress = True
+            break
+        if state["ok"] < target and not stop_requested():
+            _set_job(
+                job_id,
+                {
+                    "status": "running",
+                    "step": "batch",
+                    "detail": f"Đã tạo {state['ok']}/{target} TK · đang bù thêm {target - state['ok']} TK (vòng {rounds + 1})",
+                    "total": target,
+                    "done_count": state["finished"],
+                    "ok_count": state["ok"],
+                    "fail_count": state["fail"],
+                    "failures": list(state["failures"]),
+                },
             )
-    if chain is not None:
-        try:
-            set_invite_chain_code(chain.tail())
-        except Exception:
-            pass
     if not finalize:
+        _set_job(
+            job_id,
+            {
+                "status": "running",
+                "step": "batch",
+                "detail": f"Đã tạo {state['ok']}/{target} TK · {state['fail']} lỗi.",
+                "total": target,
+                "done_count": state["finished"],
+                "ok_count": state["ok"],
+                "fail_count": state["fail"],
+                "failures": list(state["failures"]),
+            },
+        )
         return
     stopped = stop_requested()
     status = "error" if state["ok"] == 0 else "done"
-    summary = (
-        f"Đã dừng · {state['ok']}/{count} tài khoản được tạo."
-        if stopped
-        else f"Xong {state['ok']}/{count} tài khoản · {state['fail']} lỗi."
-    )
+    if stopped:
+        summary = f"Đã dừng · {state['ok']}/{target} tài khoản được tạo."
+    elif state["ok"] >= target:
+        summary = f"Xong {state['ok']}/{target} tài khoản · {state['fail']} lỗi."
+        if rounds > 1:
+            summary += f" (đã chạy bù {rounds - 1} vòng)"
+    elif no_progress:
+        summary = (
+            f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
+            "vòng bù không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
+        )
+    else:
+        summary = f"Xong {state['ok']}/{target} tài khoản · {state['fail']} lỗi."
     if state["failures"]:
         summary += "\n" + "\n".join(state["failures"])
     _set_job(
@@ -1702,7 +1780,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             "status": status,
             "step": "done",
             "detail": summary,
-            "total": count,
+            "total": target,
             "done_count": state["finished"],
             "ok_count": state["ok"],
             "fail_count": state["fail"],
@@ -2037,8 +2115,8 @@ def api_signup():
     max_workers = max(1, min(MAX_WORKERS, max_workers))
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
-    if proxies:
-        count = min(count, len(proxies) * per_proxy)
+    # Số TK là số tài khoản TẠO THÀNH CÔNG cần có — tài khoản lỗi/bỏ qua được
+    # chạy bù ở các vòng sau, nên không giới hạn số TK theo proxy × per_proxy nữa.
     proxies = proxies[:count]
     job_id = uuid.uuid4().hex[:12]
     workers = min(len(proxies), max_workers) if proxies else _signup_workers(count, 0, max_workers)

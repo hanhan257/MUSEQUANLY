@@ -333,7 +333,7 @@
         <div class="signup-proxy">
           <label for="signupInviteCode">Mã mời cho tài khoản đầu tiên — tài khoản sau tự vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước. Để trống thì dùng mã đã lưu, chưa có mã thì tài khoản đầu bỏ qua.</label>
           <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
-          <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. 3 proxy × 5 TK thì tối đa 15 tài khoản. Ô proxy để trống thì dùng Kho proxy.</label>
+          <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. Ô proxy để trống thì dùng Kho proxy. Số TK là số tài khoản TẠO THÀNH CÔNG — tài khoản lỗi/bỏ qua được chạy bù đến khi đủ số đó, kho hết proxy/thẻ thì dừng bù.</label>
           <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
           <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
           <input type="number" id="signupMaxWorkers" value="5" min="1" max="20" style="width:4.2rem;" />
@@ -369,7 +369,7 @@
         <div class="signup-proxy">
           <label for="buffProxies">Mỗi dòng một proxy. Mỗi proxy tạo lần lượt tối đa số tài khoản ở ô Tài khoản / proxy, các proxy chạy song song tối đa số luồng ở ô Số luồng. Dạng ip:port hoặc ip:port:user:pass.</label>
           <textarea id="buffProxies" placeholder="1.2.3.4:8000&#10;5.6.7.8:8000:user:pass"></textarea>
-          <label for="buffPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau.</label>
+          <label for="buffPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — mỗi proxy tạo tối đa từng này tài khoản, chạy lần lượt trên cùng 1 proxy. Proxy nào lỗi thì báo lỗi và chuyển sang proxy sau. Số TK / mã là số tài khoản TẠO THÀNH CÔNG — tài khoản lỗi/bỏ qua được chạy bù đến khi đủ số đó.</label>
           <input type="number" id="buffPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
           <label for="buffMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20).</label>
           <input type="number" id="buffMaxWorkers" value="5" min="1" max="20" style="width:4.2rem;" />
