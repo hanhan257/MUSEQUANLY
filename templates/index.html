@@ -641,6 +641,18 @@
       });
     }
 
+    // Ô tích ở bảng: không động vào ô nào = cả kho (mặc định tích hết).
+    // Bỏ tích dòng nào thì các nút toolbar chỉ chạy trên các dòng còn tích.
+    // Trả null khi chưa thu hẹp lựa chọn (chạy cả kho như cũ), mảng rỗng khi bỏ tích hết.
+    function checkedRegularEmails() {
+      if (!excludedExport.size) return null;
+      return accounts.filter(a => !excludedExport.has(a.email.toLowerCase())).map(a => a.email);
+    }
+    function checkedCreatedEmails() {
+      if (!createdExcluded.size) return null;
+      return createdAccounts.filter(a => !createdExcluded.has(a.email.toLowerCase())).map(a => a.email);
+    }
+
     function renderTable() {
       const list = filteredAccounts();
       const root = document.getElementById('tableWrap');
@@ -874,10 +886,11 @@
     async function exportCreatedLoginDownload() {
       const kind = viewMode === 'password' ? 'password' : 'plain';
       const active = (createdBoard.warehouses || []).find(w => w.active);
+      const picked = checkedCreatedEmails();
       const res = await fetch('/api/accounts/export-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: 'created', created_kind: kind, warehouse_id: active ? active.id : null }),
+        body: JSON.stringify({ scope: 'created', created_kind: kind, warehouse_id: active ? active.id : null, ...(picked ? { emails: picked } : {}) }),
       });
       const data = await res.json();
       if (!data.ok || !data.count) { toast('Không có tài khoản để xuất'); return; }
@@ -920,10 +933,20 @@
         'running'
       );
       const skipExisting = force ? false : document.getElementById('skipExisting').checked;
+      // Chỉ thu hẹp khi bấm "Đăng nhập lấy lại cookie" (force) và đã bỏ tích dòng nào.
+      // Nút "Lấy cookie kho này" vẫn chạy cả kho vì nó lấy cookie cho TK chưa có (không có ô tích).
+      const picked = force ? checkedRegularEmails() : null;
+      if (picked && !picked.length) {
+        toast('Chưa tích tài khoản nào');
+        setLoginStatus('Chưa tích tài khoản nào.', 'error');
+        setBatchButtons(false);
+        document.getElementById('batchProgress').classList.remove('show');
+        return;
+      }
       const res = await fetch('/api/batch/cookies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skip_existing: skipExisting, warehouse_id: activeWarehouseId }),
+        body: JSON.stringify({ skip_existing: skipExisting, warehouse_id: activeWarehouseId, ...(picked ? { emails: picked } : {}) }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -1808,9 +1831,10 @@
         toast('Đang chạy việc khác');
         return;
       }
-      const emails = createdAccounts.map(a => a.email);
+      const picked = force ? checkedCreatedEmails() : null;
+      const emails = picked ?? createdAccounts.map(a => a.email);
       if (!emails.length) {
-        setSignupStatus('Kho này chưa có tài khoản.', 'error');
+        setSignupStatus(picked ? 'Chưa tích tài khoản nào.' : 'Kho này chưa có tài khoản.', 'error');
         return;
       }
       const skipExisting = force ? false : document.getElementById('createdSkipExisting').checked;
@@ -1842,9 +1866,10 @@
         toast('Đang chạy việc khác');
         return;
       }
-      const emails = accounts.filter(a => a.has_cookie).map(a => a.email);
+      const picked = checkedRegularEmails();
+      const emails = (picked ?? accounts).filter(a => a.has_cookie).map(a => a.email);
       if (!emails.length) {
-        setLoginStatus('Kho này chưa có tài khoản nào có cookie.', 'error');
+        setLoginStatus(picked ? 'Chưa tích tài khoản nào có cookie.' : 'Kho này chưa có tài khoản nào có cookie.', 'error');
         return;
       }
       setLoginStatus(`Kiểm tra token tuần ${emails.length} TK có cookie…`, 'running');
@@ -1872,10 +1897,12 @@
     }
 
     async function copyAllCookies() {
-      const lines = accounts
+      const picked = checkedRegularEmails();
+      const rows = picked ?? accounts;
+      const lines = rows
         .filter(a => a.has_cookie && a.cookie_header)
         .map(a => `${a.email}|${a.cookie_header}`);
-      if (!lines.length) { toast('Không có cookie'); return; }
+      if (!lines.length) { toast('Không có cookie được tích'); return; }
       await navigator.clipboard.writeText(lines.join('\n'));
       toast(`Đã trích xuất ${lines.length} cookie`);
     }
@@ -1885,9 +1912,10 @@
         toast('Đang chạy việc khác');
         return;
       }
-      const emails = createdAccounts.filter(a => a.has_cookie).map(a => a.email);
+      const picked = checkedCreatedEmails();
+      const emails = (picked ?? createdAccounts).filter(a => a.has_cookie).map(a => a.email);
       if (!emails.length) {
-        setSignupStatus('Kho này chưa có tài khoản nào có cookie.', 'error');
+        setSignupStatus(picked ? 'Chưa tích tài khoản nào có cookie.' : 'Kho này chưa có tài khoản nào có cookie.', 'error');
         return;
       }
       setSignupStatus(`Kiểm tra token tuần ${emails.length} TK có cookie…`, 'running');
@@ -1923,11 +1951,16 @@
         setSignupStatus('Chưa chọn kho.', 'error');
         return;
       }
+      const picked = checkedCreatedEmails();
+      if (picked && !picked.length) {
+        setSignupStatus('Chưa tích tài khoản nào.', 'error');
+        return;
+      }
       setSignupStatus('Chạy lại mã mời cho các TK chưa nhập…', 'running');
       const res = await fetch('/api/batch/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ warehouse_id: active.id, kind: viewMode === 'password' ? 'password' : 'plain' }),
+        body: JSON.stringify({ warehouse_id: active.id, kind: viewMode === 'password' ? 'password' : 'plain', ...(picked ? { emails: picked } : {}) }),
       });
       const data = await res.json();
       if (!data.ok) {

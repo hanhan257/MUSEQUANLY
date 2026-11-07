@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v92"
+APP_BUILD = "signup-v93"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1005,7 +1005,12 @@ def api_batch_redeem():
     board = list_created_accounts(wh_id, kind)
     wh = next((w for w in board.get("warehouses", []) if w.get("id") == wh_id), None)
     buff_code = _buff_code_from_name((wh or {}).get("name") or "")
-    targets = _redeem_targets(board.get("accounts", []), kind, buff_code=buff_code)
+    accounts = board.get("accounts", [])
+    emails_param = body.get("emails")
+    if emails_param:
+        wanted = {(str(e).strip().lower()) for e in emails_param if str(e).strip()}
+        accounts = [a for a in accounts if (a.get("email") or "").strip().lower() in wanted]
+    targets = _redeem_targets(accounts, kind, buff_code=buff_code)
     pending = [t for t in targets if t.get("status") == "pending"]
     if not pending:
         return jsonify({"ok": False, "error": "Không có tài khoản nào cần chạy lại mã mời (đã nhập đủ hoặc chưa có cookie)."}), 400
