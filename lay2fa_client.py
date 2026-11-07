@@ -59,8 +59,9 @@ def email_from_lay2fa_url(url: str) -> str | None:
 
 def parse_account_line(line: str) -> tuple[str, str, str, str, str] | None:
     """Hỗ trợ cả định dạng cũ email|lay2fa|mã 2FA và mới email|mật khẩu|mã 2FA/ghi chú,
-    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy.
-    Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư, proxy)."""
+    và định dạng tool xuất: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy|link lấy mã.
+    Ô thứ 6 (link lấy mã) được chấp nhận khi dán lại nhưng không lưu — link suy ra từ
+    email/loại hộp thư lúc xuất. Trả về (email, mật khẩu/link lay2fa, mã 2FA, mật khẩu hộp thư, proxy)."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None

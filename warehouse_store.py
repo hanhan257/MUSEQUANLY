@@ -7,6 +7,7 @@ import threading
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from app_paths import DATA_DIR
 from cookie_store import delete_account_cookies_many, get_account_cookies, token_from_cookie_header
@@ -105,16 +106,32 @@ def migrate_from_legacy_accounts_txt() -> None:
     _save(data)
 
 
+def _code_link_for(account: dict[str, str]) -> str:
+    """Link lấy mã đăng nhập của tài khoản: dán vào trình duyệt là thấy thư chứa mã.
+    Tài khoản có link lay2fa thì chính link đó; hộp thư tempmail.plus thì link API
+    inbox (mã nằm trong tiêu đề thư 'Use code XXXXXX to log in'); không có hộp thư
+    nào thì rỗng. Link suy ra từ email/loại hộp thư nên không lưu vào dòng import."""
+    email = (account.get("email") or "").strip()
+    lay2fa = (account.get("lay2fa_url") or "").strip()
+    if lay2fa.lower().startswith(("http://", "https://")):
+        return lay2fa
+    if (account.get("mailtm_password") or "").strip() or email.lower().endswith("@mailto.plus"):
+        return f"https://tempmail.plus/api/mails?email={quote(email)}&limit=20&epin="
+    return ""
+
+
 def _account_line(account: dict[str, str]) -> str:
-    """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy.
-    Ô 3, 4, 5 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập
-    được và giữ nguyên proxy. Proxy ở ô 5, dán proxy mới ở ô Proxy phía dưới sẽ thay nó."""
+    """Dòng data đăng nhập: email|mật khẩu/link lay2fa|mã 2FA|mật khẩu hộp thư|proxy|link lấy mã.
+    Ô 3, 4, 5, 6 chỉ thêm khi có dữ liệu; dán lại dòng này vào kho khác vẫn đăng nhập
+    được và giữ nguyên proxy. Proxy ở ô 5, dán proxy mới ở ô Proxy phía dưới sẽ thay nó.
+    Link lấy mã ở ô 6 (suy ra từ hộp thư, không lưu riêng khi import)."""
     parts = [
         account["email"],
         account.get("lay2fa_url", ""),
         (account.get("totp_secret") or "").strip(),
         (account.get("mailtm_password") or "").strip(),
         (account.get("proxy") or "").strip(),
+        _code_link_for(account),
     ]
     while parts and not parts[-1].strip():
         parts.pop()
