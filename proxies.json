@@ -11,7 +11,7 @@
     {
       "id": "px_10e407ad35",
       "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 11,
+      "uses": 13,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -35,7 +35,7 @@
     {
       "id": "px_107e8ff5db",
       "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 21,
+      "uses": 23,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -43,7 +43,7 @@
     {
       "id": "px_da8fe0e7df",
       "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 14,
+      "uses": 16,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -51,7 +51,7 @@
     {
       "id": "px_715ae28dc1",
       "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 17,
+      "uses": 19,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -59,7 +59,7 @@
     {
       "id": "px_1c1231dc61",
       "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 11,
+      "uses": 13,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"

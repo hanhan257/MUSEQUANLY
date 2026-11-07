@@ -1,5 +1,5 @@
 {
-  "active_warehouse_id": "dbe67d5236",
+  "active_warehouse_id": "f2d1fb4aae",
   "warehouses": [
     {
       "id": "903a028c15",
@@ -806,15 +806,81 @@
       ]
     },
     {
-      "id": "8070255044",
-      "name": "Kho 5",
-      "accounts": []
-    },
-    {
-      "id": "dbe67d5236",
-      "name": "Kho 6",
-      "accounts": [],
-      "max": 50
+      "id": "f2d1fb4aae",
+      "name": "Dev - đã lấy 4 con đầu",
+      "accounts": [
+        {
+          "email": "han141943884@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han141943884%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han628543022@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han628543022%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han424232098@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han424232098%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han349997520@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han349997520%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han403685964@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han403685964%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han267739105@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han267739105%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han371039944@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han371039944%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han282509561@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han282509561%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han881290728@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han881290728%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        },
+        {
+          "email": "han304494346@mailto.plus",
+          "lay2fa_url": "https://tempmail.plus/api/mails?email=han304494346%40mailto.plus&limit=20&epin=",
+          "totp_secret": "",
+          "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
+          "mailtm_password": ""
+        }
+      ],
+      "max": 10
     },
     {
       "id": "0f99fd8e54",
@@ -3150,11 +3216,109 @@
         }
       ],
       "max": 100
+    },
+    {
+      "id": "c03c637e7f",
+      "name": "Kho 7",
+      "kind": "password",
+      "accounts": [
+        {
+          "email": "han141943884@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:49",
+          "kind": "password",
+          "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "AL78N5",
+          "redeemed_invite_code": "SOMSAA"
+        },
+        {
+          "email": "han628543022@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:49",
+          "kind": "password",
+          "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "T113G4",
+          "redeemed_invite_code": "AL78N5"
+        },
+        {
+          "email": "han424232098@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:49",
+          "kind": "password",
+          "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "SOMSAA",
+          "redeemed_invite_code": "EAC08W"
+        },
+        {
+          "email": "han349997520@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:49",
+          "kind": "password",
+          "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "EAC08W",
+          "redeemed_invite_code": "T113G4"
+        },
+        {
+          "email": "han403685964@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:50",
+          "kind": "password",
+          "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "5ND754",
+          "redeemed_invite_code": "SOMSAA"
+        },
+        {
+          "email": "han267739105@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:51",
+          "kind": "password",
+          "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "1YCI85",
+          "redeemed_invite_code": "5ND754"
+        },
+        {
+          "email": "han371039944@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:51",
+          "kind": "password",
+          "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "FO5OGS",
+          "redeemed_invite_code": "1YCI85"
+        },
+        {
+          "email": "han282509561@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:51",
+          "kind": "password",
+          "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "48J1S1",
+          "redeemed_invite_code": "86HBFN"
+        },
+        {
+          "email": "han881290728@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:51",
+          "kind": "password",
+          "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "86HBFN",
+          "redeemed_invite_code": "FO5OGS"
+        },
+        {
+          "email": "han304494346@mailto.plus",
+          "mailtm_password": "Congphu21@",
+          "created_at": "07/11/2026 15:51",
+          "kind": "password",
+          "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
+          "invite_code": "BTVYWE",
+          "redeemed_invite_code": "48J1S1"
+        }
+      ],
+      "max": 10
     }
   ],
   "active_created_warehouse_id": "3bcc19b277",
   "active_created_plain_id": "9a19d3719a",
-  "active_created_password_id": "b87be59e34",
+  "active_created_password_id": "c03c637e7f",
   "card_warehouses": [
     {
       "id": "0575265e07",
@@ -3408,7 +3572,19 @@
         "expiry": "11/29",
         "cvv": "831"
       }
+    },
+    {
+      "id": "0c6ba59128",
+      "name": "Kho 24",
+      "status": "used",
+      "uses": 10,
+      "card": {
+        "number": "4367970162424256",
+        "expiry": "11/29",
+        "cvv": "771"
+      }
     }
   ],
-  "invite_chain_code": "29F8HZ"
+  "invite_chain_code": "BTVYWE",
+  "accounts_per_warehouse": 10
 }
