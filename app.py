@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v95"
+APP_BUILD = "signup-v96"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1589,8 +1589,8 @@ def _run_signup_lane_pool(
 def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False) -> None:
     """Chạy bù đến đủ số TK: count là số tài khoản TẠO THÀNH CÔNG cần có, không
     phải số lần thử. Tài khoản lỗi/bỏ qua được chạy bù ở vòng sau cho đến khi
-    đủ số đó, hoặc đến khi 1 vòng không tạo thêm được TK nào (hết proxy/thẻ),
-    hoặc người dùng bấm Dừng."""
+    đủ số đó, hoặc đến khi 3 vòng bù liên tiếp không tạo thêm được TK nào
+    (proxy/thẻ hết hoặc Muse đang chặn), hoặc người dùng bấm Dừng."""
     if reset_stop:
         clear_stop()
     fixed_code = (fixed_code or "").strip().upper()
@@ -1627,6 +1627,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         _set_job(job_id, {"status": "error", "step": "done", "detail": "Số tài khoản phải từ 1 trở lên.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
         return
     rounds = 0
+    empty_rounds = 0
     no_progress = False
     used_pool = False
     while state["ok"] < target and not stop_requested():
@@ -1724,10 +1725,15 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         with state_lock:
             state["failures"] = list(state["failures"][-20:])
         if state["ok"] == ok_before:
-            # Vòng này không tạo thêm được TK nào: hết proxy/thẻ hoặc lỗi
-            # giống nhau ở mọi lần thử — dừng để khỏi chạy vô hạn.
-            no_progress = True
-            break
+            # Vòng này không tạo thêm được TK nào. Thử thêm vài vòng với proxy
+            # mới (Kho proxy khóa proxy lỗi rồi đổi proxy khác) rồi mới dừng,
+            # để khỏi chạy vô hạn khi proxy/thẻ đã hết hoặc Muse đang chặn.
+            empty_rounds += 1
+            if empty_rounds >= 3:
+                no_progress = True
+                break
+        else:
+            empty_rounds = 0
         if state["ok"] < target and not stop_requested():
             _set_job(
                 job_id,
@@ -1768,7 +1774,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     elif no_progress:
         summary = (
             f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
-            "vòng bù không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
+            "đã thử 3 vòng bù mà không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
         )
     else:
         summary = f"Xong {state['ok']}/{target} tài khoản · {state['fail']} lỗi."
