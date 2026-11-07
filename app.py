@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v107"
+APP_BUILD = "signup-v108"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1244,6 +1244,8 @@ def _signup_one_run(
             state["finished"] += 1
             state["failures"].append(line)
             state["last_error"] = line
+            if "kho thẻ đã hết" in text.lower():
+                state["cards_exhausted"] = True
         if count == 1:
             _set_job(
                 job_id,
@@ -1366,6 +1368,10 @@ def _run_signup_lane(
     for pos, index in enumerate(indices):
         if stop_requested():
             return
+        with state_lock:
+            if state.get("cards_exhausted"):
+                _skip_lane_rest(job_id, count, state, state_lock, indices[pos:], chain, "Kho thẻ đã hết")
+                return
         ok = _signup_one(
             job_id,
             count=count,
@@ -1514,6 +1520,11 @@ class _ProxyPool:
             mark_proxy_error(proxy_id, error)
             self._dead.add(str(proxy_id))
 
+    def exhausted(self) -> bool:
+        """True khi pool còn proxy nhưng tất cả đều đã lỗi (không còn proxy dùng được)."""
+        with self._lock:
+            return bool(self._items) and len(self._dead) >= len(self._items)
+
 
 def _run_signup_lane_pool(
     job_id: str,
@@ -1542,6 +1553,11 @@ def _run_signup_lane_pool(
         if stop_requested():
             pool.release(current["id"])
             return
+        with state_lock:
+            if state.get("cards_exhausted"):
+                pool.release(current["id"])
+                _skip_lane_rest(job_id, count, state, state_lock, indices[pos:], chain, "Kho thẻ đã hết")
+                return
         ok = _signup_one(
             job_id,
             count=count,
@@ -1592,7 +1608,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
     set_signup_turn_gap(3)
     target = max(0, int(count or 0))
-    state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": ""}
+    state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": "", "cards_exhausted": False}
     state_lock = threading.Lock()
     if proxies:
         workers = min(len(proxies), max_workers)
@@ -1621,6 +1637,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     rounds = 0
     empty_rounds = 0
     no_progress = False
+    stop_reason = ""
     used_pool = False
     while state["ok"] < target and not stop_requested():
         deficit = target - state["ok"]
@@ -1633,6 +1650,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                 proxies = [str(p.get("proxy") or "") for p in pool_records if str(p.get("proxy") or "").strip()]
             elif used_pool:
                 # Kho proxy đã cạn sau các vòng trước: dừng bù, không chạy trần.
+                stop_reason = "proxies"
                 no_progress = True
                 break
         if proxies:
@@ -1644,6 +1662,8 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             break
         rounds += 1
         ok_before = state["ok"]
+        fail_before = len(state["failures"])
+        proxy_pool = None
         round_seed = seed if rounds == 1 else latest_invite_code()
         chain = None if fixed_code else _InviteChain(round_count, round_seed)
         if proxies and use_proxy_warehouse:
@@ -1714,6 +1734,18 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                 set_invite_chain_code(chain.tail())
             except Exception:
                 pass
+        # Dừng ngay khi hết tài nguyên, khỏi chạy thêm vòng bù vô ích:
+        # hết thẻ ("Kho thẻ đã hết" là bằng chứng chắc chắn, không còn thẻ
+        # nào dùng được) hoặc Kho proxy lỗi hết (pool cạn).
+        new_failures = list(state["failures"][fail_before:])
+        if any("kho thẻ đã hết" in f.lower() for f in new_failures):
+            stop_reason = "cards"
+            no_progress = True
+            break
+        if proxy_pool is not None and proxy_pool.exhausted():
+            stop_reason = "proxies"
+            no_progress = True
+            break
         with state_lock:
             state["failures"] = list(state["failures"][-20:])
         if state["ok"] == ok_before:
@@ -1746,7 +1778,14 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             {
                 "status": "running",
                 "step": "batch",
-                "detail": f"Đã tạo {state['ok']}/{target} TK · {state['fail']} lỗi.",
+                "detail": f"Đã tạo {state['ok']}/{target} TK · {state['fail']} lỗi."
+                + (
+                    " — Kho thẻ đã hết."
+                    if stop_reason == "cards"
+                    else " — Proxy đã lỗi hết."
+                    if stop_reason == "proxies"
+                    else ""
+                ),
                 "total": target,
                 "done_count": state["finished"],
                 "ok_count": state["ok"],
@@ -1764,10 +1803,23 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         if rounds > 1:
             summary += f" (đã chạy bù {rounds - 1} vòng)"
     elif no_progress:
-        summary = (
-            f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
-            "đã thử 3 vòng bù mà không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
-        )
+        if stop_reason == "cards":
+            summary = (
+                f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
+                "Kho thẻ đã hết (các thẻ đều bị Muse báo lỗi hoặc đã đủ 10 lượt), không tạo thêm được TK nào. "
+                "Thêm thẻ mới vào Kho thẻ rồi bấm Tạo lại để bù tiếp."
+            )
+        elif stop_reason == "proxies":
+            summary = (
+                f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
+                "Proxy đã lỗi hết (không còn proxy dùng được trong Kho proxy), không tạo thêm được TK nào. "
+                "Thêm proxy mới vào Kho proxy rồi bấm Tạo lại để bù tiếp."
+            )
+        else:
+            summary = (
+                f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
+                "đã thử 3 vòng bù mà không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
+            )
     else:
         summary = f"Xong {state['ok']}/{target} tài khoản · {state['fail']} lỗi."
     if state["failures"]:
