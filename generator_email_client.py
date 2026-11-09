@@ -299,6 +299,29 @@ def _inbox_page(email: str, proxies=None) -> str:
     return response.text
 
 
+def _inbox_page_checked(email: str, proxies=None) -> str:
+    """HTML trang inbox, da kiem tra dung dia chi. Neu proxy tra ve
+    trang sai (200 nhung khong phai inbox, vd trang 'No restrictions'
+    cua proxy) thi thu truc tiep 1 lan truoc khi bao loi — vi loi nay
+    la do duong proxy chu khong phai do domain, doi domain khac cung
+    nhan lai trang sai do. Trang chan ('ban') thi khong doi duong, de
+    vong tao thu lai sau 6s. Truc tiep cung loi thi bao loi goc (qua
+    proxy) de user thay duoc tieu de trang proxy tra ve."""
+    html = _inbox_page(email, proxies=proxies)
+    try:
+        _check_inbox_page(html, email)
+        return html
+    except GeneratorEmailError as exc:
+        if proxies and "mở không đúng địa chỉ" in str(exc):
+            try:
+                direct_html = _inbox_page(email, proxies=None)
+                _check_inbox_page(direct_html, email)
+                return direct_html
+            except GeneratorEmailError:
+                pass
+        raise
+
+
 def _message_links(html: str) -> list[str]:
     """Danh sach id thu trong trang inbox, thu moi nhat truoc. Bo qua
     phan trang (page_is_N) va link lich su mailbox (chi co 2 doan)."""
@@ -366,8 +389,7 @@ def _code_from_text(text: str) -> str:
 def login_mailbox(address: str, password: str = "", proxies=None) -> str:
     """Mo hop thu da co. generator.email khong can mat khau, token la dia
     chi. Kiem tra trang inbox mo duoc va dung dia chi."""
-    html = _inbox_page(address, proxies=proxies)
-    _check_inbox_page(html, address)
+    _inbox_page_checked(address, proxies=proxies)
     return address
 
 
@@ -377,15 +399,14 @@ def confirm_mailbox_login(address: str, password: str = "", proxies=None) -> str
 
 
 def message_ids(token: str, proxies=None) -> set[str]:
-    html = _inbox_page(token, proxies=proxies)
+    html = _inbox_page_checked(token, proxies=proxies)
     return set(_message_links(html))
 
 
 def _open_mailbox(address: str, password: str, proxies=None) -> tuple[str, str, str]:
     """Dia chi moi la dung duoc ngay. Goi inbox mot lan de chac hop thu
     mo duoc va chua co thu la (dia chi ngau nhien bi trung thi doi so)."""
-    html = _inbox_page(address, proxies=proxies)
-    _check_inbox_page(html, address)
+    html = _inbox_page_checked(address, proxies=proxies)
     if _message_links(html):
         raise GeneratorEmailError(f"{address} bị trùng")
     return address, password, address
@@ -456,7 +477,7 @@ def wait_for_code(
     seen: set[str] = set(exclude_ids or ())
     while time.time() < deadline:
         try:
-            html = _inbox_page(token, proxies=proxies)
+            html = _inbox_page_checked(token, proxies=proxies)
         except GeneratorEmailError as exc:
             if "bận" in str(exc):
                 time.sleep(6)
@@ -479,7 +500,7 @@ def wait_for_code(
 def latest_code(address: str, password: str = "", proxies=None) -> str:
     """Ma moi nhat dang nam trong hop thu, dung lai cho lan dang nhap sau."""
     login_mailbox(address, password, proxies=proxies)
-    html = _inbox_page(address, proxies=proxies)
+    html = _inbox_page_checked(address, proxies=proxies)
     for message_id in _message_links(html):
         if not message_id:
             continue
