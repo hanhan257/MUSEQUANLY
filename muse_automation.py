@@ -352,22 +352,29 @@ def normalize_proxy_line(raw: str | None) -> str:
 
 
 def parse_proxy(raw: str | None) -> dict[str, str] | None:
-    """Turn ip:port, ip:port:user:pass, or scheme://user:pass@host:port into a Playwright proxy."""
+    """Turn ip:port, ip:port:user:pass, or scheme://user:pass@host:port into a Playwright proxy.
+    Mat khau co the chua @ hoac : nen PHAI nhan dang host:port truoc
+    (phan tu thu 2 la so port) roi moi xet dang user:pass@host — giong
+    cach v115 da sua cho requests_proxies. Neu khong, mat khau chua @
+    se bi tach sai thanh server rac (vd http://ss) va Chrome se hoi
+    user/pass proxy."""
     text = normalize_proxy_line(raw)
     if not text:
         return None
     if "://" not in text:
+        parts = text.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) == 2:
+                return {"server": f"http://{parts[0]}:{parts[1]}"}
+            if len(parts) >= 4:
+                host, port, user = parts[0], parts[1], parts[2]
+                password = ":".join(parts[3:])
+                return {"server": f"http://{host}:{port}", "username": user, "password": password}
+            return None
         if "@" in text:
             auth, hostport = text.rsplit("@", 1)
             user, _, password = auth.partition(":")
             return {"server": f"http://{hostport}", "username": user, "password": password}
-        parts = text.split(":")
-        if len(parts) == 2:
-            return {"server": f"http://{parts[0]}:{parts[1]}"}
-        if len(parts) >= 4:
-            host, port, user = parts[0], parts[1], parts[2]
-            password = ":".join(parts[3:])
-            return {"server": f"http://{host}:{port}", "username": user, "password": password}
         return None
     from urllib.parse import urlparse
 
