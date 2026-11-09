@@ -228,6 +228,52 @@ def _pick_domain(proxies=None) -> str:
         return random.choice(FALLBACK_DOMAINS)
 
 
+def _homepage_domain(proxies=None) -> str:
+    """Domain dang hoat dong, lay tu dia chi tu dong tren trang chu.
+    Mo https://generator.email/ la trang tu sinh 1 dia chi (vd
+    mgdias37@capcutmeflo.shop): o userName chi chua phan local, domain
+    nam rieng o input domainName2 — ghep lai la dia chi day du tren 1
+    domain dang chay. Lay domain do thay vi goi API /api/domains.php
+    (can api-token + Referer, de loi hon). Proxy tra trang sai (khong
+    co domainName2) thi thu truc tiep 1 lan. Raise neu ca 2 duong deu
+    khong lay duoc domain."""
+    def _domain_from(html: str) -> str:
+        tag = re.search(r'<input[^>]*id="domainName2"[^>]*>', html or "")
+        if not tag:
+            return ""
+        value = re.search(r'value="([^"]*)"', tag.group(0))
+        domain = (value.group(1) if value else "").strip().lower()
+        return domain if domain and "." in domain else ""
+
+    domain = ""
+    try:
+        response = _send("GET", f"{BASE}/", proxies=proxies)
+        if response.status_code == 200:
+            domain = _domain_from(response.text)
+    except GeneratorEmailError:
+        domain = ""
+    if not domain and proxies:
+        try:
+            response = _send("GET", f"{BASE}/", proxies=None)
+            if response.status_code == 200:
+                domain = _domain_from(response.text)
+        except GeneratorEmailError:
+            domain = ""
+    if not domain:
+        raise GeneratorEmailError("Không lấy được địa chỉ tự động từ trang chủ generator.email")
+    return domain
+
+
+def _pick_domain_for_create(proxies=None) -> str:
+    """Domain de tao mail moi: uu tien domain tu dia chi tu dong tren
+    trang chu (domain dang chay that, giong cach web tu sinh dia chi),
+    roi moi den danh sach API xoay."""
+    try:
+        return _homepage_domain(proxies=proxies)
+    except GeneratorEmailError:
+        return _pick_domain(proxies=proxies)
+
+
 def _split_email(email: str) -> tuple[str, str]:
     local, _, domain = (email or "").strip().partition("@")
     return local.strip().lower(), domain.strip().lower()
@@ -419,7 +465,7 @@ def create_han_mailbox(password: str, domain: str | None = None, proxies=None) -
     email."""
     last_error = "Không tạo được mail"
     for _ in range(12):
-        picked = (domain or "").strip().lower() or _pick_domain(proxies=proxies)
+        picked = (domain or "").strip().lower() or _pick_domain_for_create(proxies=proxies)
         local = f"han{secrets.randbelow(1_000_000_000):09d}"
         address = f"{local}@{picked}"
         try:
@@ -445,7 +491,7 @@ def create_mailbox(password: str, domain: str | None = None, proxies=None) -> tu
     alphabet = string.ascii_lowercase + string.digits
     last_error = "Không tạo được mail"
     for _ in range(12):
-        picked = (domain or "").strip().lower() or _pick_domain(proxies=proxies)
+        picked = (domain or "").strip().lower() or _pick_domain_for_create(proxies=proxies)
         local = "".join(secrets.choice(alphabet) for _ in range(12))
         address = f"{local}@{picked}"
         try:
