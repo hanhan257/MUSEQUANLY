@@ -114,6 +114,23 @@ def reset_proxy(proxy_id: str) -> dict[str, Any] | None:
     return None
 
 
+def reset_proxies(ids: list[str]) -> int:
+    """Mở lại nhiều proxy đã khóa (lượt dùng về 0, trạng thái sẵn sàng,
+    xóa note lỗi). Proxy đang sẵn sàng thì giữ nguyên (không xóa lượt dùng)."""
+    data = _load()
+    want = {str(i) for i in (ids or [])}
+    reset = 0
+    for p in data.get("proxies", []):
+        if str(p.get("id")) in want and (p.get("status") or "") != "ready":
+            p["uses"] = 0
+            p["status"] = "ready"
+            p["last_error"] = ""
+            reset += 1
+    if reset:
+        _save(data)
+    return reset
+
+
 def usable_proxies(limit: int) -> list[dict[str, Any]]:
     """Proxy còn dùng được: trạng thái ready, theo thứ tự đã dán. Lượt dùng
     không khóa proxy nữa nên không lọc theo giới hạn (limit chỉ giữ lại để

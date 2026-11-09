@@ -505,6 +505,8 @@
         <div class="toolbar" id="proxyBulkBar" style="margin-bottom:0.75rem;">
           <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedProxies" disabled>Xóa đã chọn</button>
           <button type="button" class="btn-error btn-sm" id="btnDeleteAllProxies">Xóa tất cả</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetSelectedProxies" disabled>Mở lại đã chọn</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetAllProxies">Mở lại tất cả</button>
         </div>
         <div class="panel"><div id="proxyTable"></div></div>
       </div>
@@ -1616,6 +1618,13 @@
       delSelBtn.textContent = proxySelected.size ? `Xóa đã chọn (${proxySelected.size})` : 'Xóa đã chọn';
       delAllBtn.disabled = proxyRows.length === 0;
       delAllBtn.textContent = proxyRows.length ? `Xóa tất cả (${proxyRows.length})` : 'Xóa tất cả';
+      const resetSelBtn = document.getElementById('btnResetSelectedProxies');
+      const resetAllBtn = document.getElementById('btnResetAllProxies');
+      const errCount = proxyRows.filter(p => p.status === 'error').length;
+      resetSelBtn.disabled = proxySelected.size === 0;
+      resetSelBtn.textContent = proxySelected.size ? `Mở lại đã chọn (${proxySelected.size})` : 'Mở lại đã chọn';
+      resetAllBtn.disabled = errCount === 0;
+      resetAllBtn.textContent = errCount ? `Mở lại tất cả (${errCount})` : 'Mở lại tất cả';
       const box = document.getElementById('proxyTable');
       const ready = proxyRows.filter(p => p.status === 'ready').length;
       const err = proxyRows.filter(p => p.status === 'error').length;
@@ -1721,6 +1730,38 @@
     }
     document.getElementById('btnDeleteSelectedProxies').addEventListener('click', deleteSelectedProxies);
     document.getElementById('btnDeleteAllProxies').addEventListener('click', deleteAllProxies);
+    async function resetProxiesByIds(ids) {
+      const res = await fetch('/api/proxies/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function resetSelectedProxies() {
+      if (!proxySelected.size) return;
+      const ids = [...proxySelected];
+      if (!confirm(`Mở lại ${ids.length} proxy đã chọn? Proxy lỗi sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetProxiesByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      proxySelected.clear();
+      renderProxies(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} proxy`);
+    }
+    async function resetAllProxies() {
+      const ids = proxyRows.filter(p => p.status === 'error').map(p => p.id);
+      if (!ids.length) { toast('Không có proxy lỗi nào.'); return; }
+      if (!confirm(`Mở lại tất cả ${ids.length} proxy lỗi? Proxy sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetProxiesByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      proxySelected.clear();
+      renderProxies(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} proxy`);
+    }
+    document.getElementById('btnResetSelectedProxies').addEventListener('click', resetSelectedProxies);
+    document.getElementById('btnResetAllProxies').addEventListener('click', resetAllProxies);
     document.getElementById('btnProxyView').addEventListener('click', async () => {
       viewMode = 'proxy';
       applyView();

@@ -3147,13 +3147,14 @@ def create_muse_account(
     mail_provider: str = "tempmail",
 ) -> LoginProgress:
     """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
-    from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, normalize_provider
+    from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, normalize_provider, requests_proxies
 
     _mail_provider = normalize_provider(mail_provider)
     _mc = mail_client(_mail_provider)
     wait_for_code = _mc.wait_for_code
     _MailError = mail_error_class(_mail_provider)
     _mail_label = mail_label(_mail_provider)
+    _mail_proxies = requests_proxies(proxy)
 
     try:
         from playwright.sync_api import sync_playwright
@@ -3237,7 +3238,7 @@ def create_muse_account(
                 page.wait_for_timeout(500)
             if field is None:
                 raise RuntimeError("Chưa thấy ô nhập mã")
-            code = wait_for_code(mail_token, timeout=120)
+            code = wait_for_code(mail_token, timeout=120, proxies=_mail_proxies)
             _emit(on_progress, step="enter_code", detail=f"Nhập mã {code}", code=code)
             _type_code(field, code)
             if not _click_enabled_next(page):
@@ -3340,6 +3341,7 @@ def login_muse(
         error_class as mail_error_class,
         label as mail_label,
         provider_for_email,
+        requests_proxies,
     )
 
     _mail_provider = provider_for_email(email)
@@ -3349,6 +3351,7 @@ def login_muse(
     wait_for_code = _mc.wait_for_code
     _MailError = mail_error_class(_mail_provider)
     _mail_label = mail_label(_mail_provider)
+    _mail_proxies = requests_proxies(proxy)
 
     result = LoginProgress(step="starting")
     _emit(on_progress, step="starting", detail="Mở trình duyệt…")
@@ -3360,8 +3363,8 @@ def login_muse(
     if mailbox_password:
         _emit(on_progress, step="mail", detail=f"Mở hộp thư {_mail_label} để lấy mã lần sau")
         try:
-            mail_token = login_mailbox(email, mailbox_password)
-            known_mail_ids = message_ids(mail_token)
+            mail_token = login_mailbox(email, mailbox_password, proxies=_mail_proxies)
+            known_mail_ids = message_ids(mail_token, proxies=_mail_proxies)
         except _MailError as exc:
             err = LoginProgress(step="error", error=str(exc))
             _emit(on_progress, **err.__dict__)
@@ -3472,12 +3475,12 @@ def login_muse(
                     if mailbox_password:
                         _emit(on_progress, step="fetch_otp", detail=f"Lấy mã mới từ {_mail_label}…")
                         try:
-                            email_code = wait_for_code(mail_token, timeout=120, exclude_ids=known_mail_ids)
+                            email_code = wait_for_code(mail_token, timeout=120, exclude_ids=known_mail_ids, proxies=_mail_proxies)
                         except _MailError as exc:
                             if "hết phiên" not in str(exc):
                                 raise
-                            mail_token = login_mailbox(email, mailbox_password)
-                            email_code = wait_for_code(mail_token, timeout=90, exclude_ids=known_mail_ids)
+                            mail_token = login_mailbox(email, mailbox_password, proxies=_mail_proxies)
+                            email_code = wait_for_code(mail_token, timeout=90, exclude_ids=known_mail_ids, proxies=_mail_proxies)
                     else:
                         _emit(on_progress, step="fetch_otp", detail="Lấy mã từ Lay2FA…")
                         otp_result = wait_for_new_muse_code(

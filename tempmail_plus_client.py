@@ -59,12 +59,54 @@ def _hold(seconds: float) -> None:
         _next_slot = max(_next_slot, time.monotonic() + seconds)
 
 
-def _send(method: str, url: str, **kwargs) -> requests.Response:
+def _describe_request_error(exc: BaseException) -> str:
+    """Mo ta ngan gon loi mang, khong kem URL/email/mat khau proxy.
+    Uu tien loi proxy (neu co) roi moi den nguyen nhan sau cung."""
+    chain: list[BaseException] = []
+    cur: BaseException | None = exc
+    while cur is not None and len(chain) < 6:
+        chain.append(cur)
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+    if any("Proxy" in type(item).__name__ for item in chain):
+        return "không kết nối được proxy"
+    name = type(chain[-1]).__name__ if chain else type(exc).__name__
+    if "NameResolution" in name or "gaierror" in name:
+        return "lỗi DNS (không phân giải được tên miền)"
+    if "ConnectTimeout" in name or "ReadTimeout" in name or "Timeout" in name:
+        return "hết thời gian chờ"
+    if "SSLError" in name or "SSL" in name:
+        return "lỗi SSL"
+    if "Connection" in name:
+        return "không kết nối được máy chủ"
+    return name
+
+
+def _send(method: str, url: str, proxies=None, **kwargs) -> requests.Response:
+    """Goi API tempmail.plus. proxies la dict requests (xem
+    mail_provider.requests_proxies): doc mail di qua proxy de proxy phan
+    giai DNS thay may local. Proxy hong/chet thi thu truc tiep 1 lan; ca
+    hai deu loi thi bao loi ngan gon (khong kem URL/email)."""
     kwargs.setdefault("timeout", 30)
     last_status = 429
+    via = "proxy" if proxies else "trực tiếp"
+    tried: list[str] = []
     for _ in range(8):
         _slot()
-        response = requests.request(method, url, **kwargs)
+        try:
+            response = requests.request(method, url, proxies=proxies, **kwargs)
+        except requests.exceptions.RequestException as exc:
+            tried.append(via)
+            if proxies:
+                proxies = None
+                via = "trực tiếp"
+                continue
+            if len(tried) > 1:
+                where = "proxy và trực tiếp đều lỗi"
+            else:
+                where = f"{tried[0]} lỗi"
+            raise TempMailPlusError(
+                f"Không gọi được tempmail.plus ({where}: {_describe_request_error(exc)})"
+            ) from exc
         if response.status_code in (429, 503) or response.status_code >= 500:
             last_status = response.status_code
             _hold(6)
@@ -98,40 +140,42 @@ def _json(response: requests.Response) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _list(email: str, limit: int = 20) -> dict:
+def _list(email: str, limit: int = 20, proxies=None) -> dict:
     response = _send(
         "GET",
         f"{API}/api/mails",
         params={"email": email, "limit": limit, "epin": ""},
+        proxies=proxies,
     )
     return _json(response)
 
 
-def _detail(email: str, mail_id: int | str) -> dict:
+def _detail(email: str, mail_id: int | str, proxies=None) -> dict:
     response = _send(
         "GET",
         f"{API}/api/mails/{mail_id}",
         params={"email": email, "epin": ""},
+        proxies=proxies,
     )
     return _json(response)
 
 
-def login_mailbox(address: str, password: str = "") -> str:
+def login_mailbox(address: str, password: str = "", proxies=None) -> str:
     """Mở hộp thư đã có. tempmail.plus không cần mật khẩu, token là địa chỉ."""
-    _list(address)
+    _list(address, proxies=proxies)
     return address
 
 
-def confirm_mailbox_login(address: str, password: str = "") -> str:
+def confirm_mailbox_login(address: str, password: str = "", proxies=None) -> str:
     """Mở lại hộp thư và đọc đúng địa chỉ. Token tạo lúc nãy không tính."""
-    data = _list(address)
+    data = _list(address, proxies=proxies)
     if not data.get("result", True):
         raise TempMailPlusError("Đã tạo mail nhưng mở lại hộp thư không được")
     return address
 
 
-def message_ids(token: str) -> set[str]:
-    listing = _list(token)
+def message_ids(token: str, proxies=None) -> set[str]:
+    listing = _list(token, proxies=proxies)
     return {
         str(item.get("mail_id") or "")
         for item in (listing.get("mail_list") or [])
@@ -145,16 +189,16 @@ def _code_from_message(full: dict) -> str:
     return match.group(1) if match else ""
 
 
-def _open_mailbox(address: str, password: str) -> tuple[str, str, str]:
+def _open_mailbox(address: str, password: str, proxies=None) -> tuple[str, str, str]:
     """Địa chỉ mới là dùng được ngay. Gọi list một lần để chắc hộp thư mở
     được và chưa có thư lạ (địa chỉ ngẫu nhiên bị trùng thì đổi số)."""
-    data = _list(address)
+    data = _list(address, proxies=proxies)
     if (data.get("mail_list") or []) or int(data.get("count") or 0) > 0:
         raise TempMailPlusError(f"{address} bị trùng")
-    return address, password, confirm_mailbox_login(address, password)
+    return address, password, confirm_mailbox_login(address, password, proxies=proxies)
 
 
-def create_han_mailbox(password: str, domain: str = DEFAULT_DOMAIN) -> tuple[str, str, str]:
+def create_han_mailbox(password: str, domain: str = DEFAULT_DOMAIN, proxies=None) -> tuple[str, str, str]:
     """Mail han + 9 số @mailto.plus, có mật khẩu (giữ lại cho tương thích,
     tempmail.plus không dùng mật khẩu). Trùng thì đổi số. Trả về
     (email, password, token) với token là chính địa chỉ email."""
@@ -163,7 +207,7 @@ def create_han_mailbox(password: str, domain: str = DEFAULT_DOMAIN) -> tuple[str
         local = f"han{secrets.randbelow(1_000_000_000):09d}"
         address = f"{local}@{domain}"
         try:
-            return _open_mailbox(address, password)
+            return _open_mailbox(address, password, proxies=proxies)
         except TempMailPlusError as exc:
             text = str(exc)
             if "bị trùng" in text or "bận" in text or "không phải JSON" in text:
@@ -175,7 +219,7 @@ def create_han_mailbox(password: str, domain: str = DEFAULT_DOMAIN) -> tuple[str
     raise TempMailPlusError(last_error)
 
 
-def create_mailbox(password: str, domain: str = DEFAULT_DOMAIN) -> tuple[str, str, str]:
+def create_mailbox(password: str, domain: str = DEFAULT_DOMAIN, proxies=None) -> tuple[str, str, str]:
     """Mail ngẫu nhiên @mailto.plus, có mật khẩu để giữ tương thích hàm cũ."""
     alphabet = string.ascii_lowercase + string.digits
     last_error = "Không tạo được mail"
@@ -183,7 +227,7 @@ def create_mailbox(password: str, domain: str = DEFAULT_DOMAIN) -> tuple[str, st
         local = "".join(secrets.choice(alphabet) for _ in range(12))
         address = f"{local}@{domain}"
         try:
-            return _open_mailbox(address, password)
+            return _open_mailbox(address, password, proxies=proxies)
         except TempMailPlusError as exc:
             text = str(exc)
             if "bị trùng" in text or "bận" in text or "không phải JSON" in text:
@@ -201,6 +245,7 @@ def wait_for_code(
     timeout: float = 120,
     interval: float = 3,
     exclude_ids: set[str] | None = None,
+    proxies=None,
 ) -> str:
     """Chờ thư mới và lấy mã 6 số. token là địa chỉ email. exclude_ids là
     thư cũ, không lấy lại mã lần trước."""
@@ -208,7 +253,7 @@ def wait_for_code(
     seen: set[str] = set(exclude_ids or ())
     while time.time() < deadline:
         try:
-            listing = _list(token)
+            listing = _list(token, proxies=proxies)
         except TempMailPlusError as exc:
             if "bận" in str(exc):
                 time.sleep(6)
@@ -219,7 +264,7 @@ def wait_for_code(
             if not message_id or message_id in seen:
                 continue
             seen.add(message_id)
-            full = _detail(token, message_id)
+            full = _detail(token, message_id, proxies=proxies)
             code = _code_from_message(full)
             if code:
                 return code
@@ -227,15 +272,15 @@ def wait_for_code(
     raise TempMailPlusError("Hết giờ chưa thấy mã mới trong hộp tempmail.plus")
 
 
-def latest_code(address: str, password: str = "") -> str:
+def latest_code(address: str, password: str = "", proxies=None) -> str:
     """Mã mới nhất đang nằm trong hộp thư, dùng lại cho lần đăng nhập sau."""
-    login_mailbox(address, password)
-    listing = _list(address)
+    login_mailbox(address, password, proxies=proxies)
+    listing = _list(address, proxies=proxies)
     for item in listing.get("mail_list") or []:
         message_id = str(item.get("mail_id") or "")
         if not message_id:
             continue
-        code = _code_from_message(_detail(address, message_id))
+        code = _code_from_message(_detail(address, message_id, proxies=proxies))
         if code:
             return code
     raise TempMailPlusError("Hộp tempmail.plus chưa có mã xác minh")

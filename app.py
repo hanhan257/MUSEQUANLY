@@ -41,6 +41,7 @@ from proxy_store import (
     delete_proxies,
     list_proxies,
     mark_proxy_error,
+    reset_proxies,
     reset_proxy,
     usable_proxies,
 )
@@ -91,7 +92,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v114"
+APP_BUILD = "signup-v115"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -376,13 +377,14 @@ def api_otp(email: str):
     created = find_created_account(email) or {}
     mailbox_password = (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email)
     if mailbox_password:
-        from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, provider_for_email
+        from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, provider_for_email, requests_proxies
 
         _provider = provider_for_email(email)
         _mc = mail_client(_provider)
         _MailError = mail_error_class(_provider)
+        _proxies = requests_proxies(_login_creds(email).get("proxy"))
         try:
-            code = _mc.latest_code(email, mailbox_password)
+            code = _mc.latest_code(email, mailbox_password, proxies=_proxies)
         except _MailError as exc:
             return jsonify({"code": None, "error": str(exc), "message": None})
         return jsonify({
@@ -1277,9 +1279,14 @@ def _signup_one_run(
 
     def prepare_mail() -> tuple[str, str, str | None]:
         nonlocal email
-        from mail_provider import create_mailbox_for
+        from mail_provider import create_mailbox_for, requests_proxies
 
-        email, password, token = create_mailbox_for(mail_provider, ACCOUNT_PASSWORD, mode)
+        # Doc mail di qua proxy cua attempt (giong Chrome) de proxy phan
+        # giai DNS thay may local — may nao loi DNS tempmail.plus thi nho
+        # vay van tao duoc hop thu / doc duoc ma.
+        email, password, token = create_mailbox_for(
+            mail_provider, ACCOUNT_PASSWORD, mode, proxies=requests_proxies(proxy)
+        )
         box["email"] = email
         add_created_account(
             email,
@@ -2069,6 +2076,16 @@ def api_proxies_reset():
     if not rec:
         return jsonify({"ok": False, "error": "Không thấy proxy."}), 404
     return jsonify({"ok": True, "proxy": rec, "proxies": list_proxies()})
+
+
+@app.post("/api/proxies/reset-many")
+def api_proxies_reset_many():
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    reset = reset_proxies([str(item) for item in ids])
+    if not reset:
+        return jsonify({"ok": False, "error": "Không thấy proxy lỗi nào."}), 404
+    return jsonify({"ok": True, "reset": reset, "proxies": list_proxies()})
 
 
 @app.get("/api/summary")

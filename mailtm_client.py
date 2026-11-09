@@ -36,12 +36,54 @@ def _hold(seconds: float) -> None:
         _next_slot = max(_next_slot, time.monotonic() + seconds)
 
 
-def _send(method: str, url: str, **kwargs) -> requests.Response:
+def _describe_request_error(exc: BaseException) -> str:
+    """Mo ta ngan gon loi mang, khong kem URL/email/mat khau proxy.
+    Uu tien loi proxy (neu co) roi moi den nguyen nhan sau cung."""
+    chain: list[BaseException] = []
+    cur: BaseException | None = exc
+    while cur is not None and len(chain) < 6:
+        chain.append(cur)
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+    if any("Proxy" in type(item).__name__ for item in chain):
+        return "không kết nối được proxy"
+    name = type(chain[-1]).__name__ if chain else type(exc).__name__
+    if "NameResolution" in name or "gaierror" in name:
+        return "lỗi DNS (không phân giải được tên miền)"
+    if "ConnectTimeout" in name or "ReadTimeout" in name or "Timeout" in name:
+        return "hết thời gian chờ"
+    if "SSLError" in name or "SSL" in name:
+        return "lỗi SSL"
+    if "Connection" in name:
+        return "không kết nối được máy chủ"
+    return name
+
+
+def _send(method: str, url: str, proxies=None, **kwargs) -> requests.Response:
+    """Goi API mail.tm. proxies la dict requests (xem
+    mail_provider.requests_proxies): doc mail di qua proxy de proxy phan
+    giai DNS thay may local. Proxy hong/chet thi thu truc tiep 1 lan; ca
+    hai deu loi thi bao loi ngan gon (khong kem URL/email)."""
     kwargs.setdefault("timeout", 30)
     last_status = 429
+    via = "proxy" if proxies else "trực tiếp"
+    tried: list[str] = []
     for _ in range(8):
         _slot()
-        response = requests.request(method, url, **kwargs)
+        try:
+            response = requests.request(method, url, proxies=proxies, **kwargs)
+        except requests.exceptions.RequestException as exc:
+            tried.append(via)
+            if proxies:
+                proxies = None
+                via = "trực tiếp"
+                continue
+            if len(tried) > 1:
+                where = "proxy và trực tiếp đều lỗi"
+            else:
+                where = f"{tried[0]} lỗi"
+            raise MailTmError(
+                f"Không gọi được mail.tm ({where}: {_describe_request_error(exc)})"
+            ) from exc
         if response.status_code in (429, 503) or response.status_code >= 500:
             last_status = response.status_code
             _hold(6)
@@ -66,7 +108,7 @@ def _json(response: requests.Response) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _token_for(address: str, password: str) -> str:
+def _token_for(address: str, password: str, proxies=None) -> str:
     """Đăng nhập hộp thư đã có. Token hết hạn thì gọi lại, không cần tạo mail mới."""
     last_error = "mail.tm không trả token"
     for _ in range(4):
@@ -74,6 +116,7 @@ def _token_for(address: str, password: str) -> str:
             "POST",
             f"{API}/token",
             json={"address": address, "password": password},
+            proxies=proxies,
         )
         if response.status_code == 401:
             detail = ""
@@ -89,12 +132,12 @@ def _token_for(address: str, password: str) -> str:
     raise MailTmError(last_error)
 
 
-def login_mailbox(address: str, password: str) -> str:
-    return _token_for(address, password)
+def login_mailbox(address: str, password: str, proxies=None) -> str:
+    return _token_for(address, password, proxies=proxies)
 
 
-def _auth_get(token: str, url: str) -> dict:
-    response = _send("GET", url, headers={"Authorization": f"Bearer {token}"})
+def _auth_get(token: str, url: str, proxies=None) -> dict:
+    response = _send("GET", url, headers={"Authorization": f"Bearer {token}"}, proxies=proxies)
     if response.status_code == 401:
         raise MailTmError("mail.tm hết phiên, đăng nhập lại hộp thư")
     if response.status_code in (429, 503) or response.status_code >= 500:
@@ -102,8 +145,8 @@ def _auth_get(token: str, url: str) -> dict:
     return _json(response)
 
 
-def message_ids(token: str) -> set[str]:
-    listing = _auth_get(token, f"{API}/messages")
+def message_ids(token: str, proxies=None) -> set[str]:
+    listing = _auth_get(token, f"{API}/messages", proxies=proxies)
     return {str(item.get("id") or "") for item in (listing.get("hydra:member") or []) if item.get("id")}
 
 
@@ -116,11 +159,11 @@ def _code_from_message(full: dict) -> str:
     return match.group(1) if match else ""
 
 
-def _active_domains() -> list[str]:
+def _active_domains(proxies=None) -> list[str]:
     global _domains_at, _domains
     if _domains and time.monotonic() - _domains_at < 60:
         return list(_domains)
-    response = _send("GET", f"{API}/domains", headers={"Accept": "application/ld+json"})
+    response = _send("GET", f"{API}/domains", headers={"Accept": "application/ld+json"}, proxies=proxies)
     try:
         data = response.json()
     except Exception as exc:
@@ -140,24 +183,25 @@ def _active_domains() -> list[str]:
     return list(names)
 
 
-def confirm_mailbox_login(address: str, password: str) -> str:
+def confirm_mailbox_login(address: str, password: str, proxies=None) -> str:
     """Đăng nhập lại bằng mật khẩu đã lưu và đọc đúng hộp thư. Token tạo lúc nãy không tính."""
-    token = _token_for(address, password)
-    me = _auth_get(token, f"{API}/me")
+    token = _token_for(address, password, proxies=proxies)
+    me = _auth_get(token, f"{API}/me", proxies=proxies)
     got = str(me.get("address") or "").strip().lower()
     if got != address.strip().lower():
         raise MailTmError("Đã tạo mail nhưng đăng nhập lại không vào đúng hộp thư")
-    _auth_get(token, f"{API}/messages")
+    _auth_get(token, f"{API}/messages", proxies=proxies)
     return token
 
 
-def _open_mailbox(address: str, password: str) -> tuple[str, str, str]:
+def _open_mailbox(address: str, password: str, proxies=None) -> tuple[str, str, str]:
     """Tạo hộp thư đúng form mail.tm: email @ tên miền và mật khẩu, rồi đăng nhập lại được."""
     created = _send(
         "POST",
         f"{API}/accounts",
         headers={"Accept": "application/ld+json"},
         json={"address": address, "password": password},
+        proxies=proxies,
     )
     if created.status_code == 422:
         try:
@@ -168,12 +212,12 @@ def _open_mailbox(address: str, password: str) -> tuple[str, str, str]:
             raise MailTmError(f"mail.tm từ chối mật khẩu: {created.text[:180]}")
         raise MailTmError(f"{address} bị trùng")
     _json(created)
-    return address, password, confirm_mailbox_login(address, password)
+    return address, password, confirm_mailbox_login(address, password, proxies=proxies)
 
 
-def create_han_mailbox(password: str, domain: str = "fldubai.com") -> tuple[str, str, str]:
+def create_han_mailbox(password: str, domain: str = "fldubai.com", proxies=None) -> tuple[str, str, str]:
     """Mail han + 9 số @fldubai.com, có mật khẩu. Trùng thì đổi số. Trả về (email, password, token)."""
-    names = _active_domains()
+    names = _active_domains(proxies=proxies)
     if domain not in names:
         raise MailTmError(f"mail.tm không còn tên miền {domain}. Đang có: {', '.join(names)}")
     last_error = "Không tạo được mail"
@@ -181,7 +225,7 @@ def create_han_mailbox(password: str, domain: str = "fldubai.com") -> tuple[str,
         local = f"han{secrets.randbelow(1_000_000_000):09d}"
         address = f"{local}@{domain}"
         try:
-            return _open_mailbox(address, password)
+            return _open_mailbox(address, password, proxies=proxies)
         except MailTmError as exc:
             text = str(exc)
             if "từ chối mật khẩu" in text:
@@ -195,9 +239,9 @@ def create_han_mailbox(password: str, domain: str = "fldubai.com") -> tuple[str,
     raise MailTmError(last_error)
 
 
-def create_mailbox(password: str, domain: str = "fldubai.com") -> tuple[str, str, str]:
+def create_mailbox(password: str, domain: str = "fldubai.com", proxies=None) -> tuple[str, str, str]:
     """Mail ngẫu nhiên @fldubai.com, có mật khẩu để đăng nhập mail.tm lần sau."""
-    names = _active_domains()
+    names = _active_domains(proxies=proxies)
     if domain not in names:
         raise MailTmError(f"mail.tm không còn tên miền {domain}. Đang có: {', '.join(names)}")
     alphabet = string.ascii_lowercase + string.digits
@@ -206,7 +250,7 @@ def create_mailbox(password: str, domain: str = "fldubai.com") -> tuple[str, str
         local = "".join(secrets.choice(alphabet) for _ in range(12))
         address = f"{local}@{domain}"
         try:
-            return _open_mailbox(address, password)
+            return _open_mailbox(address, password, proxies=proxies)
         except MailTmError as exc:
             text = str(exc)
             if "từ chối mật khẩu" in text:
@@ -226,13 +270,14 @@ def wait_for_code(
     timeout: float = 120,
     interval: float = 3,
     exclude_ids: set[str] | None = None,
+    proxies=None,
 ) -> str:
     """Chờ thư mới và lấy mã 6 số. exclude_ids là thư cũ, không lấy lại mã lần trước."""
     deadline = time.time() + timeout
     seen: set[str] = set(exclude_ids or ())
     while time.time() < deadline:
         try:
-            listing = _auth_get(token, f"{API}/messages")
+            listing = _auth_get(token, f"{API}/messages", proxies=proxies)
         except MailTmError as exc:
             if "bận" in str(exc):
                 time.sleep(6)
@@ -243,7 +288,7 @@ def wait_for_code(
             if not message_id or message_id in seen:
                 continue
             seen.add(message_id)
-            full = _auth_get(token, f"{API}/messages/{message_id}")
+            full = _auth_get(token, f"{API}/messages/{message_id}", proxies=proxies)
             code = _code_from_message(full)
             if code:
                 return code
@@ -251,17 +296,17 @@ def wait_for_code(
     raise MailTmError("Hết giờ chưa thấy mã mới trong hộp mail.tm")
 
 
-def latest_code(address: str, password: str) -> str:
+def latest_code(address: str, password: str, proxies=None) -> str:
     """Mã mới nhất đang nằm trong hộp thư, dùng lại cho lần đăng nhập sau."""
-    token = login_mailbox(address, password)
-    listing = _auth_get(token, f"{API}/messages")
+    token = login_mailbox(address, password, proxies=proxies)
+    listing = _auth_get(token, f"{API}/messages", proxies=proxies)
     members = list(listing.get("hydra:member") or [])
     members.sort(key=lambda item: str(item.get("createdAt") or ""), reverse=True)
     for item in members:
         message_id = str(item.get("id") or "")
         if not message_id:
             continue
-        code = _code_from_message(_auth_get(token, f"{API}/messages/{message_id}"))
+        code = _code_from_message(_auth_get(token, f"{API}/messages/{message_id}", proxies=proxies))
         if code:
             return code
     raise MailTmError("Hộp mail.tm chưa có mã xác minh")
