@@ -233,6 +233,59 @@ def _split_email(email: str) -> tuple[str, str]:
     return local.strip().lower(), domain.strip().lower()
 
 
+def _page_address(html: str) -> str:
+    """Dia chi dang hien trong o userName cua trang inbox ('' neu khong
+    co o nay — tuc la trang tra ve khong phai trang inbox)."""
+    match = re.search(r'id="userName"[^>]*value="([^"]*)"', html or "")
+    return (match.group(1) if match else "").strip().lower()
+
+
+def _page_title(html: str) -> str:
+    match = re.search(r"<title>(.*?)</title>", html or "", re.S)
+    return _WS.sub(" ", match.group(1)).strip()[:80] if match else ""
+
+
+_CHALLENGE_HINTS = (
+    "security checking",
+    "just a moment",
+    "attention required",
+    "access denied",
+    "verify you are human",
+    "are you a robot",
+    "please verify",
+    "checking your browser",
+)
+
+
+def _is_challenge_page(html: str) -> bool:
+    """Trang chan/bot-check tra ve 200 nhung khong phai inbox (can thu
+    lai sau vai giay thay vi bao loi dia chi)."""
+    low = (html or "").lower()
+    return any(hint in low for hint in _CHALLENGE_HINTS) and "email-table" not in low
+
+
+def _check_inbox_page(html: str, email: str) -> None:
+    """Kiem tra trang inbox mo dung dia chi yeu cau chua.
+    - Trang chan -> loi 'ban' (vong tao se cho 6s roi thu lai).
+    - Trang tra ve dia chi khac (vd trang chu voi dia chi ngau nhien) ->
+      loi 'mo khong dung dia chi' kem dia chi tren trang + tieu de trang,
+      de biet chinh xac may nhan duoc trang gi (proxy tra trang sai, DNS
+      tra ve may khac...)."""
+    local, _ = _split_email(email)
+    if _is_challenge_page(html):
+        raise GeneratorEmailError("generator.email bận (trang chặn/bot-check, thử lại sau)")
+    shown = _page_address(html)
+    if shown == local:
+        return
+    if not shown and local in (html or ""):
+        return
+    title = _page_title(html)
+    detail = f"trang trả về: {title or 'không rõ tiêu đề'}"
+    if shown:
+        detail += f", địa chỉ trên trang: {shown}"
+    raise GeneratorEmailError(f"{email} mở không đúng địa chỉ ({detail})")
+
+
 def _inbox_page(email: str, proxies=None) -> str:
     """HTML trang inbox /<domain>/<user>. Raise neu khong mo duoc."""
     local, domain = _split_email(email)
@@ -314,9 +367,7 @@ def login_mailbox(address: str, password: str = "", proxies=None) -> str:
     """Mo hop thu da co. generator.email khong can mat khau, token la dia
     chi. Kiem tra trang inbox mo duoc va dung dia chi."""
     html = _inbox_page(address, proxies=proxies)
-    local, _ = _split_email(address)
-    if f'value="{local}"' not in html and local not in html:
-        raise GeneratorEmailError("Mở hộp thư generator.email không đúng địa chỉ")
+    _check_inbox_page(html, address)
     return address
 
 
@@ -334,9 +385,7 @@ def _open_mailbox(address: str, password: str, proxies=None) -> tuple[str, str, 
     """Dia chi moi la dung duoc ngay. Goi inbox mot lan de chac hop thu
     mo duoc va chua co thu la (dia chi ngau nhien bi trung thi doi so)."""
     html = _inbox_page(address, proxies=proxies)
-    local, _ = _split_email(address)
-    if f'value="{local}"' not in html and local not in html:
-        raise GeneratorEmailError(f"{address} mở không đúng địa chỉ")
+    _check_inbox_page(html, address)
     if _message_links(html):
         raise GeneratorEmailError(f"{address} bị trùng")
     return address, password, address
@@ -356,10 +405,14 @@ def create_han_mailbox(password: str, domain: str | None = None, proxies=None) -
             return _open_mailbox(address, password, proxies=proxies)
         except GeneratorEmailError as exc:
             text = str(exc)
-            if "bị trùng" in text or "bận" in text or "không phải JSON" in text:
+            # Trang tra ve sai dia chi co the do proxy tra trang cu/trang
+            # chan nhat thoi — doi domain khac thu lai thay vi chet ngay.
+            if "bị trùng" in text or "bận" in text or "không phải JSON" in text or "mở không đúng địa chỉ" in text:
                 last_error = text
                 if "bận" in text or "không phải JSON" in text:
                     time.sleep(6)
+                elif "mở không đúng địa chỉ" in text:
+                    time.sleep(2)
                 continue
             raise
     raise GeneratorEmailError(last_error)
@@ -378,10 +431,12 @@ def create_mailbox(password: str, domain: str | None = None, proxies=None) -> tu
             return _open_mailbox(address, password, proxies=proxies)
         except GeneratorEmailError as exc:
             text = str(exc)
-            if "bị trùng" in text or "bận" in text or "không phải JSON" in text:
+            if "bị trùng" in text or "bận" in text or "không phải JSON" in text or "mở không đúng địa chỉ" in text:
                 last_error = text
                 if "bận" in text or "không phải JSON" in text:
                     time.sleep(6)
+                elif "mở không đúng địa chỉ" in text:
+                    time.sleep(2)
                 continue
             raise
     raise GeneratorEmailError(last_error)
