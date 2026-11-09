@@ -3271,6 +3271,30 @@ def create_muse_account(
         _emit(on_progress, **err.__dict__)
         return err
     _wait_signup_turn(on_progress)
+    # Tao mail TRUOC khi mo Chrome (v122): tao mail co the cham (generator.email
+    # thu proxy roi truc tiep, doi domain nhieu lan). Truoc day mail tao SAU khi
+    # mo Chrome nen Chrome nam o about:blank trong suot luc tao mail, user tuong
+    # Chrome hong. Gio mail xong moi mo Chrome, mo xong la vao muse.ai ngay.
+    if prepare_mail is not None:
+        _emit(on_progress, step="mail", detail="Đang tạo hộp thư…")
+        try:
+            email, mail_token, prepared_password = prepare_mail()
+        except Exception as exc:
+            message = str(exc)
+            err = LoginProgress(step="error", error=message or "Không tạo được hộp thư")
+            _emit(on_progress, **err.__dict__)
+            return err
+        if prepared_password:
+            account_password = prepared_password
+        _emit(
+            on_progress,
+            step="mail",
+            detail=f"Hộp thư {email} đọc lại được. Bắt đầu tạo tài khoản.",
+        )
+    if not email or not mail_token:
+        err = LoginProgress(step="error", error="Chưa có mail đăng nhập được, chưa tạo tài khoản")
+        _emit(on_progress, **err.__dict__)
+        return err
     _emit(
         on_progress,
         step="starting",
@@ -3293,17 +3317,6 @@ def create_muse_account(
         page = context.new_page()
         page.set_default_timeout(20000)
         try:
-            if prepare_mail is not None:
-                email, mail_token, prepared_password = prepare_mail()
-                if prepared_password:
-                    account_password = prepared_password
-                _emit(
-                    on_progress,
-                    step="mail",
-                    detail=f"Hộp thư {email} đọc lại được. Bắt đầu tạo tài khoản.",
-                )
-            if not email or not mail_token:
-                raise RuntimeError("Chưa có mail đăng nhập được, chưa tạo tài khoản")
             _emit(on_progress, step="open_muse", detail="Tải muse.ai…")
             page.goto(MUSE_URL, wait_until="domcontentloaded", timeout=90000)
             try:
