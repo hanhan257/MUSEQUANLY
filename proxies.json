@@ -3,15 +3,15 @@
     {
       "id": "px_6a18157c8d",
       "proxy": "216.10.27.170:6848:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 6,
-      "status": "error",
-      "last_error": "han015049631@mailto.plus: Page.wait_for_timeout: Target page, context or browser has been closed. Đã đóng Chrome",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
     },
     {
       "id": "px_10e407ad35",
       "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 13,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -19,23 +19,23 @@
     {
       "id": "px_c724ae8551",
       "proxy": "67.227.42.150:6127:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 33,
-      "status": "error",
-      "last_error": "han271129724@mailto.plus: Page.goto: net::ERR_ABORTED; maybe frame was detached?\nCall log:\n  - navigating to \"https://muse.ai/\", waiting until \"domcontentloaded\". Đã đóng Chrome",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
     },
     {
       "id": "px_f78363feaa",
       "proxy": "184.174.58.120:5682:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 3,
-      "status": "error",
-      "last_error": "han909129201@mailto.plus: Page.wait_for_timeout: Target page, context or browser has been closed. Đã đóng Chrome",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
     },
     {
       "id": "px_107e8ff5db",
       "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 23,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -43,7 +43,7 @@
     {
       "id": "px_da8fe0e7df",
       "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 16,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -51,7 +51,7 @@
     {
       "id": "px_715ae28dc1",
       "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 19,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -59,7 +59,7 @@
     {
       "id": "px_1c1231dc61",
       "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 13,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -67,7 +67,7 @@
     {
       "id": "px_4e704d80c2",
       "proxy": "161.123.33.142:6165:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 28,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -75,7 +75,7 @@
     {
       "id": "px_eacddb608b",
       "proxy": "217.117.166.23:5665:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 32,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:43:24Z"
@@ -83,7 +83,7 @@
     {
       "id": "px_618e2d5f37",
       "proxy": "154.21.155.215:6658:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 5,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:45:03Z"
@@ -167,6 +167,86 @@
       "status": "ready",
       "last_error": "",
       "created_at": "2026-11-07T01:45:03Z"
+    },
+    {
+      "id": "px_b851b38f93",
+      "proxy": "67.227.42.82:6059:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_a0805326ce",
+      "proxy": "142.111.104.143:6153:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_6747b857ed",
+      "proxy": "184.174.24.213:6789:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_3edf4320c0",
+      "proxy": "208.70.9.190:7546:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_6140241f3e",
+      "proxy": "104.253.59.41:6464:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_fd04f52e8f",
+      "proxy": "184.174.30.97:5766:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_15693bc875",
+      "proxy": "198.23.147.213:5228:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_f24d08cc11",
+      "proxy": "38.154.191.15:8592:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_d167278dd8",
+      "proxy": "198.46.241.123:6658:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
+    },
+    {
+      "id": "px_cc584bf048",
+      "proxy": "23.95.250.168:6441:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-09T08:19:30Z"
     }
   ]
 }
