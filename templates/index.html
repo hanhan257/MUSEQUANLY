@@ -502,6 +502,10 @@
           <button type="button" class="btn-primary" id="btnAddProxies">Thêm proxy</button>
         </div>
         <div class="dash" id="proxyDash"></div>
+        <div class="toolbar" id="proxyBulkBar" style="margin-bottom:0.75rem;">
+          <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedProxies" disabled>Xóa đã chọn</button>
+          <button type="button" class="btn-error btn-sm" id="btnDeleteAllProxies">Xóa tất cả</button>
+        </div>
         <div class="panel"><div id="proxyTable"></div></div>
       </div>
     </main>
@@ -1597,12 +1601,21 @@
       return document.getElementById('signupProxies').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     }
     let proxyRows = [];
+    let proxySelected = new Set();
     function proxyStatusBadge(p) {
       if (p.status === 'error') return '<span class="badge die">Proxy lỗi</span>';
       return '<span class="badge live">Sẵn sàng</span>';
     }
     function renderProxies(data) {
       proxyRows = (data && data.proxies) || [];
+      const proxyIds = new Set(proxyRows.map(p => p.id));
+      proxySelected.forEach(id => { if (!proxyIds.has(id)) proxySelected.delete(id); });
+      const delSelBtn = document.getElementById('btnDeleteSelectedProxies');
+      const delAllBtn = document.getElementById('btnDeleteAllProxies');
+      delSelBtn.disabled = proxySelected.size === 0;
+      delSelBtn.textContent = proxySelected.size ? `Xóa đã chọn (${proxySelected.size})` : 'Xóa đã chọn';
+      delAllBtn.disabled = proxyRows.length === 0;
+      delAllBtn.textContent = proxyRows.length ? `Xóa tất cả (${proxyRows.length})` : 'Xóa tất cả';
       const box = document.getElementById('proxyTable');
       const ready = proxyRows.filter(p => p.status === 'ready').length;
       const err = proxyRows.filter(p => p.status === 'error').length;
@@ -1621,9 +1634,29 @@
         const actions = [];
         if (p.status !== 'ready') actions.push(`<button type="button" class="btn-ghost btn-sm" data-proxy-reset="${p.id}">Mở lại</button>`);
         actions.push(`<button type="button" class="btn-ghost btn-sm" data-proxy-del="${p.id}">Xóa</button>`);
-        return `<tr><td>${i + 1}</td><td><code>${escapeHtml(p.proxy || '')}</code></td><td>${p.uses || 0} lượt</td><td>${proxyStatusBadge(p)}</td><td class="muted">${escapeHtml(p.last_error || '')}</td><td>${actions.join(' ')}</td></tr>`;
+        return `<tr><td class="check"><input type="checkbox" class="proxy-check" data-proxy-check="${p.id}" ${proxySelected.has(p.id) ? 'checked' : ''} /></td><td>${i + 1}</td><td><code>${escapeHtml(p.proxy || '')}</code></td><td>${p.uses || 0} lượt</td><td>${proxyStatusBadge(p)}</td><td class="muted">${escapeHtml(p.last_error || '')}</td><td>${actions.join(' ')}</td></tr>`;
       }).join('');
-      box.innerHTML = `<table class="tbl"><thead><tr><th>#</th><th>Proxy</th><th>Lượt dùng</th><th>Trạng thái</th><th>Lỗi</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      box.innerHTML = `<table class="tbl"><thead><tr><th class="check"><input type="checkbox" id="proxyCheckAll" title="Chọn tất cả proxy" /></th><th>#</th><th>Proxy</th><th>Lượt dùng</th><th>Trạng thái</th><th>Lỗi</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      const checkAll = document.getElementById('proxyCheckAll');
+      if (checkAll) {
+        const selected = proxyRows.filter(p => proxySelected.has(p.id)).length;
+        checkAll.checked = proxyRows.length > 0 && selected === proxyRows.length;
+        checkAll.indeterminate = selected > 0 && selected < proxyRows.length;
+        checkAll.addEventListener('change', () => {
+          proxyRows.forEach(p => {
+            if (checkAll.checked) proxySelected.add(p.id);
+            else proxySelected.delete(p.id);
+          });
+          renderProxies({ proxies: proxyRows });
+        });
+      }
+      box.querySelectorAll('.proxy-check').forEach(boxEl => {
+        boxEl.addEventListener('change', () => {
+          if (boxEl.checked) proxySelected.add(boxEl.dataset.proxyCheck);
+          else proxySelected.delete(boxEl.dataset.proxyCheck);
+          renderProxies({ proxies: proxyRows });
+        });
+      });
       box.querySelectorAll('[data-proxy-del]').forEach(btn => btn.addEventListener('click', () => deleteProxy(btn.getAttribute('data-proxy-del'))));
       box.querySelectorAll('[data-proxy-reset]').forEach(btn => btn.addEventListener('click', () => resetProxy(btn.getAttribute('data-proxy-reset'))));
     }
@@ -1656,6 +1689,38 @@
       loadSidebarCounts();
       toast('Đã mở lại proxy');
     }
+    async function deleteProxiesByIds(ids) {
+      const res = await fetch('/api/proxies/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function deleteSelectedProxies() {
+      if (!proxySelected.size) return;
+      const ids = [...proxySelected];
+      if (!confirm(`Xóa ${ids.length} proxy đã chọn? Proxy bị xóa khỏi kho, không lấy lại được.`)) return;
+      const data = await deleteProxiesByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      proxySelected.clear();
+      renderProxies(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} proxy`);
+    }
+    async function deleteAllProxies() {
+      if (!proxyRows.length) return;
+      if (!confirm(`Xóa TẤT CẢ ${proxyRows.length} proxy trong kho? Proxy bị xóa khỏi kho, không lấy lại được.`)) return;
+      const ids = proxyRows.map(p => p.id);
+      const data = await deleteProxiesByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      proxySelected.clear();
+      renderProxies(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} proxy`);
+    }
+    document.getElementById('btnDeleteSelectedProxies').addEventListener('click', deleteSelectedProxies);
+    document.getElementById('btnDeleteAllProxies').addEventListener('click', deleteAllProxies);
     document.getElementById('btnProxyView').addEventListener('click', async () => {
       viewMode = 'proxy';
       applyView();
