@@ -93,7 +93,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v123"
+APP_BUILD = "signup-v124"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1205,10 +1205,18 @@ def _signup_one_run(
         with state_lock:
             running = list(state["running"])
             fails = list(state["failures"])
+            steps = dict(state.get("steps") or {})
             text = detail or (
                 f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
                 + (f" · đang chạy {', '.join(running)}" if running else "")
             )
+            # Batch nhieu TK: hien them buoc hien tai cua tung TK dang chay
+            # (vd "han...@...: Dang tao hop thu...") de user thay log.
+            step_lines = [
+                f"{em}: {steps[em]}" for em in running if steps.get(em)
+            ]
+            if step_lines:
+                text += "\n" + "\n".join(step_lines)
             note = state.get("invite_note") or ""
             if note and note not in text:
                 text = note + "\n" + text
@@ -1247,6 +1255,10 @@ def _signup_one_run(
             if p.step == "invite" and p.detail:
                 with state_lock:
                     state["invite_note"] = p.detail
+            # Luu buoc hien tai cua TK nay de publish() hien log.
+            if p.detail:
+                with state_lock:
+                    state.setdefault("steps", {})[email] = p.detail
             publish()
 
     def note_fail(reason: str, *, closed: bool) -> None:
@@ -1256,6 +1268,7 @@ def _signup_one_run(
         line = f"{email}: {text}" if email else text
         with state_lock:
             state["running"] = [item for item in state["running"] if item != email]
+            (state.get("steps") or {}).pop(email, None)
             state["fail"] += 1
             state["finished"] += 1
             state["failures"].append(line)
@@ -1347,6 +1360,7 @@ def _signup_one_run(
         return False
     with state_lock:
         state["running"] = [item for item in state["running"] if item != email]
+        (state.get("steps") or {}).pop(email, None)
         state["finished"] += 1
         state["ok"] += 1
     if count == 1:
@@ -1653,7 +1667,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
     set_signup_turn_gap(3)
     target = max(0, int(count or 0))
-    state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": "", "cards_exhausted": False}
+    state = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "invite_note": "", "cards_exhausted": False, "steps": {}}
     state_lock = threading.Lock()
     if proxies:
         workers = min(len(proxies), max_workers)
