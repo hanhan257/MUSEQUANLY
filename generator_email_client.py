@@ -462,9 +462,13 @@ def create_han_mailbox(password: str, domain: str | None = None, proxies=None) -
     """Mail han + 9 so @<domain generator.email xoay>, co mat khau (giu
     lai cho tuong thich, generator.email khong dung mat khau). Trung thi
     doi so. Tra ve (email, password, token) voi token la chinh dia chi
-    email."""
+    email. Chi thu toi da 6 lan: proxy tra trang sai lien tuc (3 lan
+    'mo khong dung dia chi') thi dung ngay — doi domain khong giup duoc
+    vi loi o proxy/duong mang, de tool chuyen sang proxy khac thay vi
+    ket o 'Dang tao hop thu...' hang phut."""
     last_error = "Không tạo được mail"
-    for _ in range(12):
+    wrong_page = 0
+    for _ in range(6):
         picked = (domain or "").strip().lower() or _pick_domain_for_create(proxies=proxies)
         local = f"han{secrets.randbelow(1_000_000_000):09d}"
         address = f"{local}@{picked}"
@@ -476,10 +480,17 @@ def create_han_mailbox(password: str, domain: str | None = None, proxies=None) -
             # chan nhat thoi — doi domain khac thu lai thay vi chet ngay.
             if "bị trùng" in text or "bận" in text or "không phải JSON" in text or "mở không đúng địa chỉ" in text:
                 last_error = text
-                if "bận" in text or "không phải JSON" in text:
-                    time.sleep(6)
-                elif "mở không đúng địa chỉ" in text:
+                if "mở không đúng địa chỉ" in text:
+                    wrong_page += 1
+                    if wrong_page >= 3:
+                        raise GeneratorEmailError(
+                            "Proxy trả trang sai cho generator.email 3 lần liên tiếp "
+                            "(trang trả về không phải hộp thư). Đổi proxy khác hoặc "
+                            "dùng tempmail.plus / mail.tm."
+                        ) from exc
                     time.sleep(2)
+                elif "bận" in text or "không phải JSON" in text:
+                    time.sleep(6)
                 continue
             raise
     raise GeneratorEmailError(last_error)
@@ -487,10 +498,12 @@ def create_han_mailbox(password: str, domain: str | None = None, proxies=None) -
 
 def create_mailbox(password: str, domain: str | None = None, proxies=None) -> tuple[str, str, str]:
     """Mail ngau nhien @<domain generator.email xoay>, co mat khau de giu
-    tuong thich ham cu."""
+    tuong thich ham cu. Giong create_han_mailbox: toi da 6 lan, proxy tra
+    trang sai 3 lan lien tiep thi dung ngay de doi proxy khac."""
     alphabet = string.ascii_lowercase + string.digits
     last_error = "Không tạo được mail"
-    for _ in range(12):
+    wrong_page = 0
+    for _ in range(6):
         picked = (domain or "").strip().lower() or _pick_domain_for_create(proxies=proxies)
         local = "".join(secrets.choice(alphabet) for _ in range(12))
         address = f"{local}@{picked}"
@@ -500,10 +513,17 @@ def create_mailbox(password: str, domain: str | None = None, proxies=None) -> tu
             text = str(exc)
             if "bị trùng" in text or "bận" in text or "không phải JSON" in text or "mở không đúng địa chỉ" in text:
                 last_error = text
-                if "bận" in text or "không phải JSON" in text:
-                    time.sleep(6)
-                elif "mở không đúng địa chỉ" in text:
+                if "mở không đúng địa chỉ" in text:
+                    wrong_page += 1
+                    if wrong_page >= 3:
+                        raise GeneratorEmailError(
+                            "Proxy trả trang sai cho generator.email 3 lần liên tiếp "
+                            "(trang trả về không phải hộp thư). Đổi proxy khác hoặc "
+                            "dùng tempmail.plus / mail.tm."
+                        ) from exc
                     time.sleep(2)
+                elif "bận" in text or "không phải JSON" in text:
+                    time.sleep(6)
                 continue
             raise
     raise GeneratorEmailError(last_error)
