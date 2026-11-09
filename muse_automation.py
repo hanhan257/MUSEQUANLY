@@ -1222,29 +1222,123 @@ def _enter_recovery_code(page: Page, totp_secret: str, on_progress: ProgressCall
     return code
 
 
-def _installed_browser_channel() -> str | None:
-    """Dùng Chrome hoặc Edge đã cài, vì bản Chromium của Playwright thường chưa được tải."""
-    import os
-
-    if os.name != "nt":
-        return None
+def _chrome_exe_paths() -> list[str]:
     pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
     pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
     local = os.environ.get("LOCALAPPDATA", "")
-    chrome = [
+    return [
         os.path.join(pf, r"Google\Chrome\Application\chrome.exe"),
         os.path.join(pf86, r"Google\Chrome\Application\chrome.exe"),
         os.path.join(local, r"Google\Chrome\Application\chrome.exe"),
     ]
+
+
+def _installed_browser_channel() -> str | None:
+    """Dùng Chrome hoặc Edge đã cài, vì bản Chromium của Playwright thường chưa được tải."""
+    if os.name != "nt":
+        return None
+    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+    pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
     edge = [
         os.path.join(pf86, r"Microsoft\Edge\Application\msedge.exe"),
         os.path.join(pf, r"Microsoft\Edge\Application\msedge.exe"),
     ]
-    if any(os.path.isfile(path) for path in chrome):
+    if any(os.path.isfile(path) for path in _chrome_exe_paths()):
         return "chrome"
     if any(os.path.isfile(path) for path in edge):
         return "msedge"
     return None
+
+
+BROWSERS = {
+    "auto": "Tự động (Chrome/Edge đã cài, không có thì Chromium)",
+    "chromium": "Chromium (Playwright)",
+    "chrome": "Google Chrome",
+    "firefox": "Firefox",
+    "coccoc": "Cốc Cốc",
+}
+
+
+def normalize_browser(value) -> str:
+    """Chuan hoa lua chon trinh duyet: 'auto'/trong -> 'auto' (giữ hành vi cũ:
+    dùng Chrome/Edge đã cài, không có thì Chromium của Playwright)."""
+    v = (value or "").strip().lower().replace(".", "").replace("-", "").replace(" ", "")
+    if v in ("chrome", "googlechrome"):
+        return "chrome"
+    if v in ("firefox", "ff"):
+        return "firefox"
+    if v in ("coccoc", "cốccốc"):
+        return "coccoc"
+    if v in ("chromium", "playwright"):
+        return "chromium"
+    return "auto"
+
+
+def find_coccoc_path() -> str | None:
+    """Duong dan Cốc Cốc da cai (Windows la chinh; them Linux/macOS).
+    Bien moi truong COCCOC_PATH uu tien hon duong dan mac dinh."""
+    override = os.environ.get("COCCOC_PATH", "").strip()
+    if override and os.path.isfile(override):
+        return override
+    candidates: list[str] = []
+    if os.name == "nt":
+        pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+        pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        candidates += [
+            os.path.join(pf, r"CocCoc\Browser\Application\browser.exe"),
+            os.path.join(pf86, r"CocCoc\Browser\Application\browser.exe"),
+            os.path.join(local, r"CocCoc\Browser\Application\browser.exe"),
+        ]
+    candidates += [
+        "/opt/coccoc/coccoc",
+        "/usr/bin/coccoc",
+        "/usr/local/bin/coccoc",
+        "/Applications/CocCoc.app/Contents/MacOS/CocCoc",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _launch_browser(p, proxy_cfg, *, headless: bool = False, browser_name: str = "auto"):
+    """Mo trinh duyet da chon, gan proxy ngay luc mo. 'auto' = hanh vi cu
+    (Chrome/Edge da cai neu co, khong thi Chromium cua Playwright);
+    'chromium' = ban Chromium cua Playwright; 'chrome' = Google Chrome da
+    cai; 'firefox' = ban Firefox cua Playwright; 'coccoc' = Cốc Cốc da cai.
+    Thieu trinh duyet thi bao loi tieng Viet ro rang thay vi loi goc cua
+    Playwright."""
+    name = normalize_browser(browser_name)
+    if name == "firefox":
+        kwargs: dict = {"headless": headless}
+        if proxy_cfg:
+            kwargs["proxy"] = proxy_cfg
+        try:
+            return p.firefox.launch(**kwargs)
+        except Exception as exc:
+            if "Executable doesn't exist" in str(exc) or "playwright install" in str(exc):
+                raise RuntimeError("Chưa cài Firefox của Playwright. Chạy: playwright install firefox rồi thử lại.") from exc
+            raise
+    kwargs = _browser_launch_kwargs(proxy_cfg, headless=headless)
+    if name == "chrome":
+        if os.name == "nt" and not any(os.path.isfile(path) for path in _chrome_exe_paths()):
+            raise RuntimeError("Không tìm thấy Google Chrome đã cài. Cài Chrome rồi thử lại, hoặc chọn Tự động/Chromium.")
+        kwargs["channel"] = "chrome"
+    elif name == "coccoc":
+        path = find_coccoc_path()
+        if not path:
+            raise RuntimeError("Không tìm thấy Cốc Cốc đã cài. Cài Cốc Cốc rồi thử lại, hoặc chọn trình duyệt khác.")
+        kwargs["executable_path"] = path
+        kwargs.pop("channel", None)
+    elif name == "chromium":
+        kwargs.pop("channel", None)
+    try:
+        return p.chromium.launch(**kwargs)
+    except Exception as exc:
+        if "Executable doesn't exist" in str(exc) or "playwright install" in str(exc):
+            raise RuntimeError("Chưa tải Chromium của Playwright. Chạy: playwright install chromium rồi thử lại.") from exc
+        raise
 
 
 def _browser_context_kwargs(proxy_cfg: dict[str, str] | None) -> dict:
@@ -2736,6 +2830,7 @@ def redeem_invite_for_account(
     proxy: str | None = None,
     headless: bool = True,
     on_progress: ProgressCallback | None = None,
+    browser_name: str = "auto",
 ) -> dict:
     """Chạy lại quy đổi mã mời cho 1 tài khoản đã tạo: dùng cookie đã lưu mở Muse,
     vào Cài đặt -> Quy đổi mã lời mời và nhập mã cho trước. Chỉ nhập mã, không tạo tài khoản mới."""
@@ -2754,7 +2849,7 @@ def redeem_invite_for_account(
         with sync_playwright() as p:
             proxy_cfg = parse_proxy(proxy)
             try:
-                browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=headless))
+                browser = _launch_browser(p, proxy_cfg, headless=headless, browser_name=browser_name)
             except Exception as exc:
                 message = str(exc).split("╔", 1)[0].strip()
                 return {"ok": False, "email": email, "error": message or "Không mở được trình duyệt"}
@@ -2808,6 +2903,7 @@ def check_token_usage(
     proxy: str | None = None,
     headless: bool = True,
     on_progress: ProgressCallback | None = None,
+    browser_name: str = "auto",
 ) -> dict:
     """Dùng cookie đã lưu mở trang Mức sử dụng, đọc % đã dùng / token còn lại / ngày làm mới.
     Chỉ đọc, không tạo hay đổi tài khoản. Lưu kết quả vào cookie record của tài khoản."""
@@ -2843,7 +2939,7 @@ def check_token_usage(
         with sync_playwright() as p:
             proxy_cfg = parse_proxy(proxy)
             try:
-                browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=headless))
+                browser = _launch_browser(p, proxy_cfg, headless=headless, browser_name=browser_name)
             except Exception as exc:
                 message = str(exc).split("╔", 1)[0].strip()
                 return _fail(message or "Không mở được trình duyệt")
@@ -3145,6 +3241,7 @@ def create_muse_account(
     prepare_mail: Callable[[], tuple[str, str, str | None]] | None = None,
     allow_redeem_fallback: bool = True,
     mail_provider: str = "tempmail",
+    browser_name: str = "auto",
 ) -> LoginProgress:
     """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
     from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, normalize_provider, requests_proxies
@@ -3174,7 +3271,7 @@ def create_muse_account(
     )
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=False))
+            browser = _launch_browser(p, proxy_cfg, headless=False, browser_name=browser_name)
         except Exception as exc:
             message = str(exc).split("╔", 1)[0].strip()
             err = LoginProgress(step="error", error=message or "Không mở được Chrome")
@@ -3328,6 +3425,7 @@ def login_muse(
     mailtm_password: str | None = None,
     account_password: str | None = None,
     on_progress: ProgressCallback | None = None,
+    browser_name: str = "auto",
 ) -> LoginProgress:
     try:
         from playwright.sync_api import sync_playwright
@@ -3375,7 +3473,7 @@ def login_muse(
         if proxy_cfg:
             _emit(on_progress, step="proxy", detail=f"Dùng proxy {proxy_cfg['server']}")
         try:
-            browser = p.chromium.launch(**_browser_launch_kwargs(proxy_cfg, headless=headless))
+            browser = _launch_browser(p, proxy_cfg, headless=headless, browser_name=browser_name)
         except Exception as exc:
             message = str(exc).split("╔", 1)[0].strip()
             if "Executable doesn't exist" in message:

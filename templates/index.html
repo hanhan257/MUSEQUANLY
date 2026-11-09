@@ -359,6 +359,14 @@
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
           </select>
+          <label for="signupBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này. Tự động = dùng Chrome/Edge đã cài, không có thì Chromium của Playwright.</label>
+          <select id="signupBrowser">
+            <option value="auto" selected>Tự động (mặc định)</option>
+            <option value="chromium">Chromium (Playwright)</option>
+            <option value="chrome">Google Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="coccoc">Cốc Cốc</option>
+          </select>
           <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — khi dán proxy trực tiếp thì mỗi proxy tạo tối đa từng này TK/vòng. Khi dùng Kho proxy thì proxy chạy đến khi lỗi mới khóa, không giới hạn lượt dùng. Số TK là số tài khoản TẠO THÀNH CÔNG — tài khoản lỗi/bỏ qua được chạy bù đến khi đủ số đó, kho hết proxy/thẻ thì dừng bù.</label>
           <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
           <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
@@ -395,6 +403,14 @@
           <select id="buffMailProvider">
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
+          </select>
+          <label for="buffBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này.</label>
+          <select id="buffBrowser">
+            <option value="auto" selected>Tự động (mặc định)</option>
+            <option value="chromium">Chromium (Playwright)</option>
+            <option value="chrome">Google Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="coccoc">Cốc Cốc</option>
           </select>
         </div>
         <div class="signup-proxy">
@@ -1797,6 +1813,7 @@
       document.getElementById('signupCustomCount').disabled = disabled;
       document.getElementById('signupInviteCode').disabled = disabled;
       document.getElementById('signupMailProvider').disabled = disabled;
+      document.getElementById('signupBrowser').disabled = disabled;
       document.getElementById('signupPerProxy').disabled = disabled;
     }
     function setBuffStatus(text, kind) {
@@ -1810,6 +1827,7 @@
       document.getElementById('buffPerCode').disabled = disabled;
       document.getElementById('buffMode').disabled = disabled;
       document.getElementById('buffMailProvider').disabled = disabled;
+      document.getElementById('buffBrowser').disabled = disabled;
       document.getElementById('buffProxies').disabled = disabled;
       document.getElementById('buffPerProxy').disabled = disabled;
       document.getElementById('buffMaxWorkers').disabled = disabled;
@@ -1833,6 +1851,7 @@
       if (proxies.length) count = Math.min(count, proxies.length * perProxy);
       const used = proxies.slice(0, Math.ceil(count / perProxy));
       const mailProvider = document.getElementById('signupMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
+      const browser = document.getElementById('signupBrowser').value || 'auto';
       setSignupButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
@@ -1845,7 +1864,7 @@
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider }),
+        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider, browser }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -1892,13 +1911,14 @@
       }
       const used = proxies.slice(0, Math.ceil(perCode / perProxy));
       const mailProvider = document.getElementById('buffMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
+      const browser = document.getElementById('buffBrowser').value || 'auto';
       setBuffButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       setBuffStatus(`Buff ${codes.length} mã · ${perCode} TK/mã — mỗi tài khoản đều nhập đúng mã của nó`, 'running');
       const res = await fetch('/api/buff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codes: codes.join('\n'), per_code: perCode, mode, proxies: used.join('\n'), per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider }),
+        body: JSON.stringify({ codes: codes.join('\n'), per_code: perCode, mode, proxies: used.join('\n'), per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider, browser }),
       });
       const data = await res.json();
       if (!data.ok) {
