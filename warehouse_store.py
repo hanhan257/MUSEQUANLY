@@ -147,13 +147,19 @@ def migrate_from_legacy_accounts_txt() -> None:
 def _code_link_for(account: dict[str, str]) -> str:
     """Link lấy mã đăng nhập của tài khoản: dán vào trình duyệt là thấy thư chứa mã.
     Tài khoản có link lay2fa thì chính link đó; hộp thư tempmail.plus thì link API
-    inbox (mã nằm trong tiêu đề thư 'Use code XXXXXX to log in'); không có hộp thư
-    nào thì rỗng. Link suy ra từ email/loại hộp thư nên không lưu vào dòng import."""
+    inbox (mã nằm trong tiêu đề thư 'Use code XXXXXX to log in'); hộp thư mail.tm
+    không có link mở ngay (phải đăng nhập ở mail.tm) nên để rỗng — lấy mã bằng
+    nút "Mã mail" trong tool. Link suy ra từ email/loại hộp thư nên không lưu
+    vào dòng import."""
     email = (account.get("email") or "").strip()
     lay2fa = (account.get("lay2fa_url") or "").strip()
     if lay2fa.lower().startswith(("http://", "https://")):
         return lay2fa
-    if (account.get("mailtm_password") or "").strip() or email.lower().endswith("@mailto.plus"):
+    from mail_provider import provider_for_email
+
+    if provider_for_email(email) == "tempmail" and (
+        (account.get("mailtm_password") or "").strip() or email.lower().endswith("@mailto.plus")
+    ):
         return f"https://tempmail.plus/api/mails?email={quote(email)}&limit=20&epin="
     return ""
 

@@ -3144,9 +3144,16 @@ def create_muse_account(
     on_redeem: Callable[[str | None], None] | None = None,
     prepare_mail: Callable[[], tuple[str, str, str | None]] | None = None,
     allow_redeem_fallback: bool = True,
+    mail_provider: str = "tempmail",
 ) -> LoginProgress:
     """Chrome mới, nhận proxy. Mail tạo sau bước mở Chrome."""
-    from tempmail_plus_client import TempMailPlusError, wait_for_code
+    from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, normalize_provider
+
+    _mail_provider = normalize_provider(mail_provider)
+    _mc = mail_client(_mail_provider)
+    wait_for_code = _mc.wait_for_code
+    _MailError = mail_error_class(_mail_provider)
+    _mail_label = mail_label(_mail_provider)
 
     try:
         from playwright.sync_api import sync_playwright
@@ -3201,7 +3208,7 @@ def create_muse_account(
             page.wait_for_timeout(2000)
             _emit(on_progress, step="email", detail=f"Chờ Muse load xong rồi nhập {email}")
             _submit_signup_email(page, email)
-            _emit(on_progress, step="wait_code", detail="Chờ mã trong tempmail.plus…")
+            _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
             field = None
             password_sent = False
             for _ in range(40):
@@ -3297,7 +3304,7 @@ def create_muse_account(
             return result
         except Exception as exc:
             message = "Đã dừng" if stop_requested() else str(exc)
-            if isinstance(exc, TempMailPlusError):
+            if isinstance(exc, _MailError):
                 message = str(exc)
             err = LoginProgress(step="error", error=message)
             try:
@@ -3326,6 +3333,23 @@ def login_muse(
     except ImportError as exc:
         return LoginProgress(step="error", error=f"Chưa cài Playwright: {exc}")
 
+    # Nha cung cap mail suy ra tu domain cua email (TK tao bang mail.tm thi
+    # dang nhap lai cung bang mail.tm, TK tempmail.plus thi bang tempmail.plus).
+    from mail_provider import (
+        client as mail_client,
+        error_class as mail_error_class,
+        label as mail_label,
+        provider_for_email,
+    )
+
+    _mail_provider = provider_for_email(email)
+    _mc = mail_client(_mail_provider)
+    login_mailbox = _mc.login_mailbox
+    message_ids = _mc.message_ids
+    wait_for_code = _mc.wait_for_code
+    _MailError = mail_error_class(_mail_provider)
+    _mail_label = mail_label(_mail_provider)
+
     result = LoginProgress(step="starting")
     _emit(on_progress, step="starting", detail="Mở trình duyệt…")
 
@@ -3334,13 +3358,11 @@ def login_muse(
     mail_token = ""
     known_mail_ids: set[str] = set()
     if mailbox_password:
-        from tempmail_plus_client import TempMailPlusError, login_mailbox, message_ids
-
-        _emit(on_progress, step="mail", detail="Mở hộp thư tempmail.plus để lấy mã lần sau")
+        _emit(on_progress, step="mail", detail=f"Mở hộp thư {_mail_label} để lấy mã lần sau")
         try:
             mail_token = login_mailbox(email, mailbox_password)
             known_mail_ids = message_ids(mail_token)
-        except TempMailPlusError as exc:
+        except _MailError as exc:
             err = LoginProgress(step="error", error=str(exc))
             _emit(on_progress, **err.__dict__)
             return err
@@ -3448,12 +3470,10 @@ def login_muse(
                         page.get_by_text(CODE_SCREEN).wait_for(timeout=15000)
                         otp_input = page.locator('input[autocomplete="one-time-code"]')
                     if mailbox_password:
-                        from tempmail_plus_client import TempMailPlusError, login_mailbox, wait_for_code
-
-                        _emit(on_progress, step="fetch_otp", detail="Lấy mã mới từ tempmail.plus…")
+                        _emit(on_progress, step="fetch_otp", detail=f"Lấy mã mới từ {_mail_label}…")
                         try:
                             email_code = wait_for_code(mail_token, timeout=120, exclude_ids=known_mail_ids)
-                        except TempMailPlusError as exc:
+                        except _MailError as exc:
                             if "hết phiên" not in str(exc):
                                 raise
                             mail_token = login_mailbox(email, mailbox_password)

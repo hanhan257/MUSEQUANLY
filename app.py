@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v112"
+APP_BUILD = "signup-v113"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -376,16 +376,19 @@ def api_otp(email: str):
     created = find_created_account(email) or {}
     mailbox_password = (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email)
     if mailbox_password:
-        from tempmail_plus_client import TempMailPlusError, latest_code
+        from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, provider_for_email
 
+        _provider = provider_for_email(email)
+        _mc = mail_client(_provider)
+        _MailError = mail_error_class(_provider)
         try:
-            code = latest_code(email, mailbox_password)
-        except TempMailPlusError as exc:
+            code = _mc.latest_code(email, mailbox_password)
+        except _MailError as exc:
             return jsonify({"code": None, "error": str(exc), "message": None})
         return jsonify({
             "code": code,
             "error": None,
-            "message": {"subject": "tempmail.plus", "sender": "tempmail.plus", "date": ""},
+            "message": {"subject": mail_label(_provider), "sender": mail_label(_provider), "date": ""},
         })
     result = get_latest_muse_code(email)
     payload = {
@@ -1131,6 +1134,7 @@ def _signup_one(
     chain: _InviteChain | None = None,
     fixed_code: str = "",
     err_box: dict | None = None,
+    mail_provider: str = "tempmail",
 ) -> bool:
     box = {"email": "", "published": False}
 
@@ -1159,6 +1163,7 @@ def _signup_one(
             on_invite=on_invite,
             on_redeem=on_redeem,
             fixed_code=fixed_code,
+            mail_provider=mail_provider,
         )
         if err_box is not None:
             err_box["error"] = box.get("error", "")
@@ -1186,9 +1191,8 @@ def _signup_one_run(
     on_invite,
     on_redeem=None,
     fixed_code: str = "",
+    mail_provider: str = "tempmail",
 ) -> bool:
-    from tempmail_plus_client import TempMailPlusError, create_han_mailbox, create_mailbox
-
     email = ""
 
     def publish(detail: str | None = None) -> None:
@@ -1273,10 +1277,9 @@ def _signup_one_run(
 
     def prepare_mail() -> tuple[str, str, str | None]:
         nonlocal email
-        if mode == "password":
-            email, password, token = create_han_mailbox(ACCOUNT_PASSWORD, "mailto.plus")
-        else:
-            email, password, token = create_mailbox(ACCOUNT_PASSWORD)
+        from mail_provider import create_mailbox_for
+
+        email, password, token = create_mailbox_for(mail_provider, ACCOUNT_PASSWORD, mode)
         box["email"] = email
         add_created_account(
             email,
@@ -1314,6 +1317,7 @@ def _signup_one_run(
             on_redeem=on_redeem,
             prepare_mail=prepare_mail,
             allow_redeem_fallback=not fixed_code,
+            mail_provider=mail_provider,
         )
         ok = result.step == "done"
         error = result.error or ""
@@ -1372,6 +1376,7 @@ def _run_signup_lane(
     indices: list[int],
     chain: _InviteChain | None,
     fixed_code: str = "",
+    mail_provider: str = "tempmail",
 ) -> None:
     """Một proxy chạy lần lượt từng tài khoản. Tài khoản lỗi thì báo lỗi rồi
     dừng làn này, các tài khoản còn lại trên proxy đó bỏ qua, làn khác vẫn chạy."""
@@ -1392,6 +1397,7 @@ def _run_signup_lane(
             index=index,
             chain=chain,
             fixed_code=fixed_code,
+            mail_provider=mail_provider,
         )
         if ok:
             continue
@@ -1548,6 +1554,7 @@ def _run_signup_lane_pool(
     fixed_code: str = "",
     pool: _ProxyPool,
     per_proxy: int,
+    mail_provider: str = "tempmail",
 ) -> None:
     """Một lane dùng Kho proxy: lấy proxy từ pool; proxy lỗi (lỗi mạng/proxy)
     thì khóa lại rồi đổi sang proxy mới và làm tiếp các TK còn lại. Lượt dùng
@@ -1580,6 +1587,7 @@ def _run_signup_lane_pool(
             chain=chain,
             fixed_code=fixed_code,
             err_box=err_box,
+            mail_provider=mail_provider,
         )
         rest = indices[pos + 1:]
         if ok:
@@ -1611,7 +1619,7 @@ def _run_signup_lane_pool(
     pool.release(current["id"])
 
 
-def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False) -> None:
+def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False, mail_provider: str = "tempmail") -> None:
     """Chạy bù đến đủ số TK: count là số tài khoản TẠO THÀNH CÔNG cần có, không
     phải số lần thử. Tài khoản lỗi/bỏ qua được chạy bù ở vòng sau cho đến khi
     đủ số đó. Chỉ dừng khi: đủ số TK, người dùng bấm Dừng, Kho thẻ đã hết,
@@ -1619,6 +1627,9 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
     if reset_stop:
         clear_stop()
     fixed_code = (fixed_code or "").strip().upper()
+    from mail_provider import normalize_provider
+
+    mail_provider = normalize_provider(mail_provider)
     proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
     seed = (seed or "").strip().upper()
     per_proxy = max(1, min(50, int(per_proxy or 5)))
@@ -1701,6 +1712,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                             fixed_code=fixed_code,
                             pool=proxy_pool,
                             per_proxy=per_proxy,
+                            mail_provider=mail_provider,
                         ),
                         lane_indices,
                     )
@@ -1721,6 +1733,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                             indices=lane[1],
                             chain=chain,
                             fixed_code=fixed_code,
+                            mail_provider=mail_provider,
                         ),
                         lanes,
                     )
@@ -1740,6 +1753,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
                             index=index,
                             chain=chain,
                             fixed_code=fixed_code,
+                            mail_provider=mail_provider,
                         ),
                         range(round_count),
                     )
@@ -1853,7 +1867,7 @@ def _buff_code_from_name(name: str) -> str:
     return code if re.fullmatch(r"[A-Z0-9]{4,16}", code) else ""
 
 
-def _run_buff_batch(job_id: str, codes: list[str], per_code: int, mode: str = "password", proxies: list[str] | None = None, per_proxy: int = 5, max_workers: int = BATCH_PARALLEL) -> None:
+def _run_buff_batch(job_id: str, codes: list[str], per_code: int, mode: str = "password", proxies: list[str] | None = None, per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, mail_provider: str = "tempmail") -> None:
     """Buff tài khoản: mỗi mã tạo per_code tài khoản mới, mọi tài khoản đều nhập đúng mã đó
     (không nối chuỗi như tạo thường), lấy cookie và lưu vào kho riêng tên 'Kho - MÃ'.
     Chạy lần lượt từng mã."""
@@ -1884,6 +1898,7 @@ def _run_buff_batch(job_id: str, codes: list[str], per_code: int, mode: str = "p
             fixed_code=code,
             reset_stop=False,
             finalize=False,
+            mail_provider=mail_provider,
         )
         job = _get_job(job_id)
         ok = int(job.get("ok_count") or 0)
@@ -2145,6 +2160,9 @@ def api_created_active():
 def api_signup():
     body = request.get_json(force=True, silent=True) or {}
     mode = "plain" if body.get("mode") == "plain" else "password"
+    from mail_provider import normalize_provider
+
+    mail_provider = normalize_provider(body.get("mail_provider"))
     raw_count = body.get("count")
     try:
         count = int(raw_count)
@@ -2184,7 +2202,7 @@ def api_signup():
             "total": count,
         },
     )
-    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), kwargs={"use_proxy_warehouse": use_proxy_warehouse}, daemon=True)
+    thread = threading.Thread(target=_run_signup_batch, args=(job_id, count, mode, proxies, invite_code, per_proxy, max_workers), kwargs={"use_proxy_warehouse": use_proxy_warehouse, "mail_provider": mail_provider}, daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "workers": workers, "per_proxy": per_proxy, "max_workers": max_workers})
 
@@ -2193,6 +2211,9 @@ def api_signup():
 def api_buff():
     body = request.get_json(force=True, silent=True) or {}
     mode = "plain" if body.get("mode") == "plain" else "password"
+    from mail_provider import normalize_provider
+
+    mail_provider = normalize_provider(body.get("mail_provider"))
     codes: list[str] = []
     for line in str(body.get("codes") or "").splitlines():
         code = (line or "").strip().upper()
@@ -2234,7 +2255,7 @@ def api_buff():
             "total": total,
         },
     )
-    thread = threading.Thread(target=_run_buff_batch, args=(job_id, codes, per_code_actual, mode, proxies, per_proxy, max_workers), daemon=True)
+    thread = threading.Thread(target=_run_buff_batch, args=(job_id, codes, per_code_actual, mode, proxies, per_proxy, max_workers, mail_provider), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "total": total, "codes": codes, "per_code": per_code_actual})
 
@@ -2425,6 +2446,7 @@ def _watch_files() -> list[str]:
         "lay2fa_client.py",
         "mailtm_client.py",
         "tempmail_plus_client.py",
+        "mail_provider.py",
     ):
         p = BUNDLE_DIR / name
         if p.is_file():

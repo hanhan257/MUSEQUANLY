@@ -354,6 +354,11 @@
         <div class="signup-proxy">
           <label for="signupInviteCode">Mã mời cho tài khoản đầu tiên — tài khoản sau tự vào Cài đặt, bấm Quy đổi mã lời mời và nhập mã của tài khoản ngay trước. Để trống thì dùng mã đã lưu, chưa có mã thì tài khoản đầu bỏ qua.</label>
           <input type="text" id="signupInviteCode" placeholder="VD: 3LLRKU" autocomplete="off" spellcheck="false" style="width:12rem;text-transform:uppercase;" />
+          <label for="signupMailProvider" style="margin-top:0.5rem;">Loại mail temp — hộp thư dùng để tạo tài khoản.</label>
+          <select id="signupMailProvider" onchange="updateSignupMailMeta()">
+            <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
+            <option value="mailtm">mail.tm — @fldubai.com</option>
+          </select>
           <label for="signupPerProxy" style="margin-top:0.5rem;">Tài khoản / proxy — khi dán proxy trực tiếp thì mỗi proxy tạo tối đa từng này TK/vòng. Khi dùng Kho proxy thì proxy chạy đến khi lỗi mới khóa, không giới hạn lượt dùng. Số TK là số tài khoản TẠO THÀNH CÔNG — tài khoản lỗi/bỏ qua được chạy bù đến khi đủ số đó, kho hết proxy/thẻ thì dừng bù.</label>
           <input type="number" id="signupPerProxy" value="5" min="1" max="50" style="width:4.2rem;" />
           <label for="signupMaxWorkers" style="margin-top:0.5rem;">Số luồng — tối đa từng này làn chạy cùng lúc (1–20). Nhiều luồng thì thẻ trong kho tự xoay đều: 20 luồng / 4 kho thì mỗi kho nhận ~5 luồng, thẻ nào đủ 10 lượt hoặc bị Muse báo lỗi thì khóa kho, tool chuyển sang thẻ khác ngay.</label>
@@ -385,6 +390,11 @@
           <select id="buffMode">
             <option value="password" selected>Tạo TK có mật khẩu</option>
             <option value="plain">Tạo TK không mật khẩu</option>
+          </select>
+          <label for="buffMailProvider" style="margin-top:0.5rem;">Loại mail temp — hộp thư dùng để tạo tài khoản.</label>
+          <select id="buffMailProvider">
+            <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
+            <option value="mailtm">mail.tm — @fldubai.com</option>
           </select>
         </div>
         <div class="signup-proxy">
@@ -1670,10 +1680,17 @@
     function signupMode() {
       return 'password';
     }
+    function updateSignupMailMeta() {
+      const p = document.getElementById('signupMailProvider').value;
+      document.getElementById('signupMeta').textContent = p === 'mailtm'
+        ? 'han + 9 số @fldubai.com · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
+        : 'han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã';
+    }
     function setSignupButtons(disabled) {
       document.querySelectorAll('[data-signup-count], #btnCustomSignup').forEach(btn => { btn.disabled = disabled; });
       document.getElementById('signupCustomCount').disabled = disabled;
       document.getElementById('signupInviteCode').disabled = disabled;
+      document.getElementById('signupMailProvider').disabled = disabled;
       document.getElementById('signupPerProxy').disabled = disabled;
     }
     function setBuffStatus(text, kind) {
@@ -1686,6 +1703,7 @@
       document.getElementById('buffCodes').disabled = disabled;
       document.getElementById('buffPerCode').disabled = disabled;
       document.getElementById('buffMode').disabled = disabled;
+      document.getElementById('buffMailProvider').disabled = disabled;
       document.getElementById('buffProxies').disabled = disabled;
       document.getElementById('buffPerProxy').disabled = disabled;
       document.getElementById('buffMaxWorkers').disabled = disabled;
@@ -1708,11 +1726,12 @@
       }
       if (proxies.length) count = Math.min(count, proxies.length * perProxy);
       const used = proxies.slice(0, Math.ceil(count / perProxy));
+      const mailProvider = document.getElementById('signupMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
       setSignupButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
-      const lead = 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
+      const lead = mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
         'running'
@@ -1720,7 +1739,7 @@
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy, max_workers: maxWorkers }),
+        body: JSON.stringify({ count, mode, proxies: used.join('\n'), invite_code: inviteCode, per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -1766,13 +1785,14 @@
         return;
       }
       const used = proxies.slice(0, Math.ceil(perCode / perProxy));
+      const mailProvider = document.getElementById('buffMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
       setBuffButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       setBuffStatus(`Buff ${codes.length} mã · ${perCode} TK/mã — mỗi tài khoản đều nhập đúng mã của nó`, 'running');
       const res = await fetch('/api/buff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codes: codes.join('\n'), per_code: perCode, mode, proxies: used.join('\n'), per_proxy: perProxy, max_workers: maxWorkers }),
+        body: JSON.stringify({ codes: codes.join('\n'), per_code: perCode, mode, proxies: used.join('\n'), per_proxy: perProxy, max_workers: maxWorkers, mail_provider: mailProvider }),
       });
       const data = await res.json();
       if (!data.ok) {
