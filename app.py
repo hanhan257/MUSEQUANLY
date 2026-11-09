@@ -91,7 +91,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v111"
+APP_BUILD = "signup-v112"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -1130,6 +1130,7 @@ def _signup_one(
     index: int = 0,
     chain: _InviteChain | None = None,
     fixed_code: str = "",
+    err_box: dict | None = None,
 ) -> bool:
     box = {"email": "", "published": False}
 
@@ -1145,7 +1146,7 @@ def _signup_one(
             set_redeemed_invite_code(box["email"], code)
 
     try:
-        return _signup_one_run(
+        ok = _signup_one_run(
             job_id,
             count=count,
             mode=mode,
@@ -1159,7 +1160,12 @@ def _signup_one(
             on_redeem=on_redeem,
             fixed_code=fixed_code,
         )
-    except Exception:
+        if err_box is not None:
+            err_box["error"] = box.get("error", "")
+        return ok
+    except Exception as exc:
+        if err_box is not None:
+            err_box["error"] = str(exc)
         return False
     finally:
         if chain is not None and not box["published"]:
@@ -1244,6 +1250,10 @@ def _signup_one_run(
             state["finished"] += 1
             state["failures"].append(line)
             state["last_error"] = line
+            # Lỗi của riêng lần thử này, để lane phân loại đúng proxy của nó
+            # (state["last_error"] là chung cho mọi lane, lane khác có thể ghi
+            # đè trước khi lane này đọc).
+            box["error"] = text
             if "kho thẻ đã hết" in text.lower():
                 state["cards_exhausted"] = True
         if count == 1:
@@ -1558,6 +1568,7 @@ def _run_signup_lane_pool(
                 pool.release(current["id"])
                 _skip_lane_rest(job_id, count, state, state_lock, indices[pos:], chain, "Kho thẻ đã hết")
                 return
+        err_box: dict = {}
         ok = _signup_one(
             job_id,
             count=count,
@@ -1568,13 +1579,19 @@ def _run_signup_lane_pool(
             index=index,
             chain=chain,
             fixed_code=fixed_code,
+            err_box=err_box,
         )
         rest = indices[pos + 1:]
         if ok:
             pool.bump(current["id"])
             continue
-        with state_lock:
-            last_error = str(state.get("last_error") or "")
+        # Lỗi của chính lần thử này (không đọc state["last_error"] chung nữa:
+        # lane khác có thể đã ghi đè nó bằng lỗi thẻ/OTP trước khi lane này
+        # đọc, khiến proxy lỗi không bị khóa).
+        last_error = (err_box.get("error") or "").strip()
+        if not last_error:
+            with state_lock:
+                last_error = str(state.get("last_error") or "")
         if not _is_proxy_error(last_error):
             pool.release(current["id"])
             if rest:
@@ -1597,8 +1614,8 @@ def _run_signup_lane_pool(
 def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: list[str] | None = None, seed: str = "", per_proxy: int = 5, max_workers: int = BATCH_PARALLEL, fixed_code: str = "", reset_stop: bool = True, finalize: bool = True, use_proxy_warehouse: bool = False) -> None:
     """Chạy bù đến đủ số TK: count là số tài khoản TẠO THÀNH CÔNG cần có, không
     phải số lần thử. Tài khoản lỗi/bỏ qua được chạy bù ở vòng sau cho đến khi
-    đủ số đó, hoặc đến khi 3 vòng bù liên tiếp không tạo thêm được TK nào
-    (proxy/thẻ hết hoặc Muse đang chặn), hoặc người dùng bấm Dừng."""
+    đủ số đó. Chỉ dừng khi: đủ số TK, người dùng bấm Dừng, Kho thẻ đã hết,
+    hoặc Kho proxy đã lỗi hết — không tự dừng sau vài vòng trống nữa."""
     if reset_stop:
         clear_stop()
     fixed_code = (fixed_code or "").strip().upper()
@@ -1635,7 +1652,6 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         _set_job(job_id, {"status": "error", "step": "done", "detail": "Số tài khoản phải từ 1 trở lên.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
         return
     rounds = 0
-    empty_rounds = 0
     no_progress = False
     stop_reason = ""
     used_pool = False
@@ -1661,7 +1677,6 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             no_progress = True
             break
         rounds += 1
-        ok_before = state["ok"]
         fail_before = len(state["failures"])
         proxy_pool = None
         round_seed = seed if rounds == 1 else latest_invite_code()
@@ -1748,16 +1763,6 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
             break
         with state_lock:
             state["failures"] = list(state["failures"][-20:])
-        if state["ok"] == ok_before:
-            # Vòng này không tạo thêm được TK nào. Thử thêm vài vòng với proxy
-            # mới (Kho proxy khóa proxy lỗi rồi đổi proxy khác) rồi mới dừng,
-            # để khỏi chạy vô hạn khi proxy/thẻ đã hết hoặc Muse đang chặn.
-            empty_rounds += 1
-            if empty_rounds >= 3:
-                no_progress = True
-                break
-        else:
-            empty_rounds = 0
         if state["ok"] < target and not stop_requested():
             _set_job(
                 job_id,
@@ -1818,7 +1823,7 @@ def _run_signup_batch(job_id: str, count: int, mode: str = "password", proxies: 
         else:
             summary = (
                 f"Dừng bù · {state['ok']}/{target} tài khoản · {state['fail']} lỗi — "
-                "đã thử 3 vòng bù mà không tạo thêm được TK nào, kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
+                "không tạo thêm được TK nào. Kiểm tra proxy/thẻ rồi bấm Tạo lại để bù tiếp."
             )
     else:
         summary = f"Xong {state['ok']}/{target} tài khoản · {state['fail']} lỗi."

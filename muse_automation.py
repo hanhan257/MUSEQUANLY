@@ -397,6 +397,9 @@ SIGNUP_BLOCKED = re.compile(
     r"không thể tạo tài khoản mới|cannot create (?:a |an )?new account|can(?:not|'t) create (?:a |an )?(?:new )?account",
     re.I,
 )
+# Tiêu đề dialog chặn ("Something went wrong") — dự phòng khi dòng lỗi
+# "You can't create..." không khớp được (vd dấu nháy cong ' thay vì ').
+SIGNUP_WRONG = re.compile(r"something went wrong", re.I)
 MAIL_FLAGGED = re.compile(
     r"spam|disposable|temporary email|email tạm|không hỗ trợ email|email này không|không thể dùng email|try a different email|use a different email|invalid email|email không hợp lệ|không chấp nhận",
     re.I,
@@ -3100,9 +3103,9 @@ def _resolve_after_birthday(
     for tick in range(60):
         if stop_requested():
             raise RuntimeError("Đã dừng")
-        if _text_visible(page, SIGNUP_BLOCKED):
+        if _text_visible(page, SIGNUP_BLOCKED) or _text_visible(page, SIGNUP_WRONG):
             page.wait_for_timeout(2000)
-            if _text_visible(page, SIGNUP_BLOCKED):
+            if _text_visible(page, SIGNUP_BLOCKED) or _text_visible(page, SIGNUP_WRONG):
                 raise RuntimeError(
                     "Muse chặn tạo tài khoản mới (You can't create a new account right now)."
                     " Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần."
@@ -3116,6 +3119,16 @@ def _resolve_after_birthday(
         page.wait_for_timeout(500)
     if _card_form_visible(page):
         _submit_age_card(page, on_progress)
+        return
+    # Kẹt ở trang ngày sinh quá 30 giây mà không thấy trang thẻ: không trả về
+    # im lặng nữa (trước đây flow chạy tiếp sang bước mã mời trên trang kẹt,
+    # lỗi sau đó không còn là lỗi proxy nên proxy không bị khóa, Chrome thì
+    # đứng im ở dialog). Coi như proxy bị Muse chặn: khóa proxy, đóng Chrome,
+    # lấy proxy khác tạo TK mới.
+    raise RuntimeError(
+        "Muse chặn tạo tài khoản mới (kẹt ở trang ngày sinh quá 30 giây, không thấy trang thẻ)."
+        " Thử proxy khác."
+    )
 
 
 def create_muse_account(
