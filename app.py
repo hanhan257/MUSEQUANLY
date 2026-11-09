@@ -93,7 +93,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v116"
+APP_BUILD = "signup-v117"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -380,10 +380,10 @@ def api_otp(email: str):
     if mailbox_password:
         from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, provider_for_email, requests_proxies
 
-        _provider = provider_for_email(email)
+        _proxies = requests_proxies(_login_creds(email).get("proxy"))
+        _provider = provider_for_email(email, proxies=_proxies)
         _mc = mail_client(_provider)
         _MailError = mail_error_class(_provider)
-        _proxies = requests_proxies(_login_creds(email).get("proxy"))
         try:
             code = _mc.latest_code(email, mailbox_password, proxies=_proxies)
         except _MailError as exc:
@@ -1297,6 +1297,7 @@ def _signup_one_run(
             mailtm_password=password,
             kind="password" if mode == "password" else "plain",
             proxy=proxy,
+            mail_provider=mail_provider,
         )
         with state_lock:
             state["running"].append(email)

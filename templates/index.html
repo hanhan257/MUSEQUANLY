@@ -358,6 +358,7 @@
           <select id="signupMailProvider" onchange="updateSignupMailMeta()">
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
+            <option value="genemail">generator.email — domain xoay (mới)</option>
           </select>
           <label for="signupBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này. Tự động = dùng Chrome/Edge đã cài, không có thì Chromium của Playwright.</label>
           <select id="signupBrowser">
@@ -403,6 +404,7 @@
           <select id="buffMailProvider">
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
+            <option value="genemail">generator.email — domain xoay (mới)</option>
           </select>
           <label for="buffBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này.</label>
           <select id="buffBrowser">
@@ -1806,6 +1808,8 @@
       const p = document.getElementById('signupMailProvider').value;
       document.getElementById('signupMeta').textContent = p === 'mailtm'
         ? 'han + 9 số @fldubai.com · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
+        : p === 'genemail'
+        ? 'han + 9 số @<domain xoay của generator.email> · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
         : 'han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã';
     }
     function setSignupButtons(disabled) {
@@ -1850,13 +1854,13 @@
       }
       if (proxies.length) count = Math.min(count, proxies.length * perProxy);
       const used = proxies.slice(0, Math.ceil(count / perProxy));
-      const mailProvider = document.getElementById('signupMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
+      const mailProvider = document.getElementById('signupMailProvider').value || 'tempmail';
       const browser = document.getElementById('signupBrowser').value || 'auto';
       setSignupButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
-      const lead = mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
+      const lead = mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : mailProvider === 'genemail' ? 'Đang tạo mail han + 9 số @<domain xoay generator.email>, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
         'running'
@@ -1910,7 +1914,7 @@
         return;
       }
       const used = proxies.slice(0, Math.ceil(perCode / perProxy));
-      const mailProvider = document.getElementById('buffMailProvider').value === 'mailtm' ? 'mailtm' : 'tempmail';
+      const mailProvider = document.getElementById('buffMailProvider').value || 'tempmail';
       const browser = document.getElementById('buffBrowser').value || 'auto';
       setBuffButtons(true);
       if (loginPollTimer) clearInterval(loginPollTimer);

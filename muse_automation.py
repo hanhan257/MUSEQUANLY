@@ -3442,14 +3442,14 @@ def login_muse(
         requests_proxies,
     )
 
-    _mail_provider = provider_for_email(email)
+    _mail_proxies = requests_proxies(proxy)
+    _mail_provider = provider_for_email(email, proxies=_mail_proxies)
     _mc = mail_client(_mail_provider)
     login_mailbox = _mc.login_mailbox
     message_ids = _mc.message_ids
     wait_for_code = _mc.wait_for_code
     _MailError = mail_error_class(_mail_provider)
     _mail_label = mail_label(_mail_provider)
-    _mail_proxies = requests_proxies(proxy)
 
     result = LoginProgress(step="starting")
     _emit(on_progress, step="starting", detail="Mở trình duyệt…")

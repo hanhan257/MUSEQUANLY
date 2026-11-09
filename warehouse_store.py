@@ -157,10 +157,16 @@ def _code_link_for(account: dict[str, str]) -> str:
         return lay2fa
     from mail_provider import provider_for_email
 
-    if provider_for_email(email) == "tempmail" and (
+    _provider = provider_for_email(email)
+    if _provider == "tempmail" and (
         (account.get("mailtm_password") or "").strip() or email.lower().endswith("@mailto.plus")
     ):
         return f"https://tempmail.plus/api/mails?email={quote(email)}&limit=20&epin="
+    if _provider == "genemail":
+        # generator.email co trang inbox cong khai: mo link la thay thu.
+        local, _, domain = email.partition("@")
+        if local and domain:
+            return f"https://generator.email/{domain.strip().lower()}/{local.strip().lower()}"
     return ""
 
 
@@ -812,9 +818,11 @@ def delete_created_warehouse(warehouse_id: str) -> dict[str, Any] | None:
     return {"deleted": name, "kind": kind, "count": len(emails)}
 
 
-def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "plain", proxy: str = "") -> dict[str, Any]:
+def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "plain", proxy: str = "", mail_provider: str = "") -> dict[str, Any]:
     """Lưu mail vào kho tạo riêng. Đủ sức chứa của kho thì sang kho tiếp theo (kho mới
-    nối tiếp giữ nguyên sức chứa của kho vừa đầy)."""
+    nối tiếp giữ nguyên sức chứa của kho vừa đầy). mail_provider luu loai
+    mail temp (tempmail/mailtm/genemail) de lan sau dang nhap lai biet doc
+    ma o dau — TK cu chua co truong nay thi suy luan tu domain."""
     from datetime import datetime
 
     with _CREATED_LOCK:
@@ -829,6 +837,9 @@ def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "p
                 if proxy and not acc.get("proxy"):
                     acc["proxy"] = proxy
                     changed = True
+                if mail_provider and not acc.get("mail_provider"):
+                    acc["mail_provider"] = mail_provider
+                    changed = True
                 if changed:
                     _save(data)
                 return {"email": acc.get("email") or email.strip(), "already": True}
@@ -839,6 +850,7 @@ def add_created_account(email: str, *, mailtm_password: str = "", kind: str = "p
             "created_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
             "kind": kind,
             "proxy": (proxy or "").strip(),
+            "mail_provider": (mail_provider or "").strip().lower(),
         }
         target = _append_created_row(data, row, kind)
         _save(data)

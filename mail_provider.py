@@ -9,6 +9,10 @@ chi la doi module:
 - "mailtm": mail.tm (dung truoc v62, bo theo yeu cau luc do). Tao hop thu
   qua API, co mat khau + token JWT de dang nhap lai. Ten mien mac dinh
   fldubai.com van dang hoat dong (kiem tra 2026-11-09: tao + doc inbox OK).
+- "genemail": generator.email (them tu v117). Khong can tao tai khoan/
+  dang nhap — dia chi la token giong tempmail.plus. Domain xoay (lay live
+  tu /api/domains.php moi lan tao mail), doc inbox bang trang HTML
+  /<domain>/<user> + cookie inbox_ctx (xem generator_email_client.py).
 """
 import importlib
 from urllib.parse import quote, unquote, urlparse
@@ -16,6 +20,7 @@ from urllib.parse import quote, unquote, urlparse
 PROVIDERS = {
     "tempmail": ("tempmail_plus_client", "TempMailPlusError", "tempmail.plus"),
     "mailtm": ("mailtm_client", "MailTmError", "mail.tm"),
+    "genemail": ("generator_email_client", "GeneratorEmailError", "generator.email"),
 }
 
 
@@ -71,10 +76,13 @@ def requests_proxies(proxy) -> dict | None:
 
 
 def normalize_provider(value) -> str:
-    """'mailtm'/'mail.tm' -> 'mailtm', moi thu khac -> 'tempmail' (mac dinh)."""
-    v = (value or "").strip().lower().replace(".", "").replace("-", "")
+    """'mailtm'/'mail.tm' -> 'mailtm', 'genemail'/'generator.email' ->
+    'genemail', moi thu khac -> 'tempmail' (mac dinh)."""
+    v = (value or "").strip().lower().replace(".", "").replace("-", "").replace(" ", "")
     if v in ("mailtm",):
         return "mailtm"
+    if v in ("genemail", "generatoremail"):
+        return "genemail"
     return "tempmail"
 
 
@@ -96,13 +104,40 @@ def label(provider) -> str:
     return PROVIDERS[normalize_provider(provider)][2]
 
 
-def provider_for_email(email) -> str:
-    """Suy luan provider tu domain cua email (dung khi dang nhap lai TK cu,
-    luc do khong co lua chon nao duoc luu theo TK)."""
+def provider_for_email(email, proxies=None) -> str:
+    """Suy luan provider tu email (dung khi dang nhap lai TK cu, luc do
+    khong co lua chon nao duoc luu theo TK).
+    Thu tu: (1) TK da tao co luu mail_provider trong kho thi lay thang do
+    (chinh xac nhat, khong can goi mang); (2) domain trong danh sach
+    tempmail.plus -> tempmail; (3) fldubai.com (domain duy nhat dang hoat
+    dong cua mail.tm) -> mailtm; (4) domain con hoat dong tren
+    generator.email (kiem tra live qua /search.php) -> genemail; (5) mac
+    dinh mailtm nhu cu (cho TK import khong ro loai)."""
+    email = (email or "").strip().lower()
+    try:
+        from warehouse_store import find_created_account
+
+        row = find_created_account(email) or {}
+        stored = (row.get("mail_provider") or "").strip().lower()
+        if stored in PROVIDERS:
+            return stored
+    except Exception:
+        pass
     from tempmail_plus_client import DOMAINS as TEMPMAIL_DOMAINS
 
-    domain = (email or "").rsplit("@", 1)[-1].strip().lower()
-    return "tempmail" if domain in {d.lower() for d in TEMPMAIL_DOMAINS} else "mailtm"
+    domain = email.rsplit("@", 1)[-1].strip().lower()
+    if domain in {d.lower() for d in TEMPMAIL_DOMAINS}:
+        return "tempmail"
+    if domain == "fldubai.com":
+        return "mailtm"
+    try:
+        from generator_email_client import is_active_domain
+
+        if is_active_domain(domain, proxies=proxies, timeout=10):
+            return "genemail"
+    except Exception:
+        pass
+    return "mailtm"
 
 
 def create_mailbox_for(provider, password: str, mode: str, proxies=None) -> tuple[str, str, str]:
@@ -114,6 +149,11 @@ def create_mailbox_for(provider, password: str, mode: str, proxies=None) -> tupl
     if provider == "tempmail":
         if mode == "password":
             return mod.create_han_mailbox(password, "mailto.plus", proxies=proxies)
+        return mod.create_mailbox(password, proxies=proxies)
+    if provider == "genemail":
+        # Domain xoay — client tu lay danh sach live, khong truyen domain.
+        if mode == "password":
+            return mod.create_han_mailbox(password, proxies=proxies)
         return mod.create_mailbox(password, proxies=proxies)
     if mode == "password":
         return mod.create_han_mailbox(password, "fldubai.com", proxies=proxies)
