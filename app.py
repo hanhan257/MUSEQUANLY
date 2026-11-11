@@ -48,6 +48,7 @@ from proxy_store import (
 )
 from warehouse_store import (
     add_card_warehouse,
+    add_card_warehouses_bulk,
     add_created_account,
     create_created_warehouse,
     delete_card_warehouse,
@@ -93,7 +94,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v124"
+APP_BUILD = "signup-v125"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 200
@@ -2050,6 +2051,15 @@ def api_cards_add():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "card": card, **list_card_warehouses()})
+
+
+@app.post("/api/cards/add-many")
+def api_cards_add_many():
+    body = request.get_json(force=True, silent=True) or {}
+    if not str(body.get("text") or "").strip():
+        return jsonify({"ok": False, "error": "Chưa dán thẻ nào."}), 400
+    result = add_card_warehouses_bulk(body.get("text") or "")
+    return jsonify({"ok": True, **result, **list_card_warehouses()})
 
 
 @app.post("/api/cards/delete")

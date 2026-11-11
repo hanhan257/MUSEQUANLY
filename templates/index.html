@@ -498,6 +498,14 @@
           <input id="cardCvv" placeholder="CVV" inputmode="numeric" autocomplete="off" style="width:5.2rem;" />
           <button type="button" class="btn-primary" id="btnAddCard">Thêm thẻ</button>
         </div>
+        <div class="panel" style="margin-bottom:0.75rem;">
+          <label for="bulkCards">Dán nhiều thẻ — mỗi dòng một thẻ, các cột cách nhau bằng Tab: <b>số thẻ ⇥ CVV ⇥ MM/YY</b> (copy trực tiếp từ bảng tính). Mỗi thẻ mới tự tạo một kho, thẻ trùng số sẽ bỏ qua.</label>
+          <textarea id="bulkCards" rows="4" style="margin-top:0.4rem;" placeholder="Dán danh sách thẻ vào đây..."></textarea>
+          <div class="toolbar" style="margin-top:0.5rem;">
+            <button type="button" class="btn-primary" id="btnAddManyCards">Thêm nhiều thẻ</button>
+            <span class="meta" id="bulkCardsMsg"></span>
+          </div>
+        </div>
         <div class="toolbar" id="cardFilterBar" style="margin-bottom:0.75rem;">
           <button type="button" class="btn-ghost btn-sm" data-card-filter="all">Tất cả</button>
           <button type="button" class="btn-ghost btn-sm" data-card-filter="ready">Sẵn sàng</button>
@@ -1616,6 +1624,26 @@
       renderCards(data);
       loadSidebarCounts();
       toast('Đã thêm ' + (data.card && data.card.name ? data.card.name : 'thẻ'));
+    });
+    document.getElementById('btnAddManyCards').addEventListener('click', async () => {
+      const box = document.getElementById('bulkCards');
+      if (!box.value.trim()) { toast('Chưa dán thẻ nào'); return; }
+      const res = await fetch('/api/cards/add-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: box.value }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không thêm được thẻ'); return; }
+      box.value = '';
+      renderCards(data);
+      loadSidebarCounts();
+      let msg = 'Đã thêm ' + data.added + ' kho mới';
+      if (data.duplicates) msg += ', bỏ qua ' + data.duplicates + ' thẻ trùng';
+      if (data.invalid) msg += ', ' + data.invalid + ' dòng lỗi';
+      if (data.errors && data.errors.length) msg += ' (' + data.errors.join('; ') + ')';
+      document.getElementById('bulkCardsMsg').textContent = msg;
+      toast('Đã thêm ' + data.added + ' kho mới');
     });
     function signupProxyLines() {
       return document.getElementById('signupProxies').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);

@@ -1153,6 +1153,97 @@ def add_card_warehouse(number: str, expiry: str, cvv: str) -> dict[str, Any]:
         return {"id": wh["id"], "name": name, "number": pan, "expiry": exp, "cvv": code, "status": ""}
 
 
+def _split_card_paste_line(line: str) -> list[str]:
+    """Tách một dòng dán thẻ thành 3 ô: số thẻ, CVV, ngày hết hạn.
+    Ưu tiên Tab / | / , / ; (copy từ bảng tính ra Tab); không có thì tách
+    theo khoảng trắng — nếu số thẻ có khoảng trắng giữa các nhóm số thì
+    gộp các phần đầu lại, 2 phần cuối là CVV và ngày."""
+    text = (line or "").strip()
+    if not text:
+        return []
+    for sep in ("\t", "|", ",", ";"):
+        if sep in text:
+            return [part.strip() for part in text.split(sep)]
+    parts = text.split()
+    if len(parts) <= 3:
+        return parts
+    return [" ".join(parts[:-2]), parts[-2], parts[-1]]
+
+
+def _normalize_cvv(value: str) -> str:
+    """CVV 3–4 số; 1–2 số thì thêm số 0 đầu (bảng tính hay cắt số 0 đầu,
+    ví dụ 047 dán thành 47)."""
+    code = _card_digits(value)
+    if not code or len(code) > 4:
+        raise ValueError("CVV phải có 3 hoặc 4 số")
+    return code.zfill(3) if len(code) < 3 else code
+
+
+def add_card_warehouses_bulk(raw: str) -> dict[str, Any]:
+    """Dán nhiều thẻ, mỗi dòng một thẻ: số thẻ [Tab] CVV [Tab] MM/YY.
+    Mỗi thẻ mới tự tạo một kho (Kho N nối tiếp). Thẻ trùng số với kho đã
+    có hoặc trùng trong đoạn dán thì bỏ qua. Dòng lỗi (thiếu cột, số thẻ/
+    CVV/ngày chưa đúng) được đếm riêng, không chặn các dòng đúng.
+    Trả về số kho mới đã thêm, số thẻ trùng, số dòng lỗi và chi tiết lỗi
+    (chỉ ghi số dòng, không ghi lại số thẻ)."""
+    lines = (raw or "").splitlines()
+    with _CREATED_LOCK:
+        data = ensure_initialized()
+        warehouses = data.setdefault("card_warehouses", [])
+        existing = {_card_digits((wh.get("card") or {}).get("number") or "") for wh in warehouses}
+        numbers = []
+        for wh in warehouses:
+            parts = (wh.get("name") or "").split()
+            if len(parts) == 2 and parts[0] == "Kho" and parts[1].isdigit():
+                numbers.append(int(parts[1]))
+        next_number = (max(numbers) if numbers else 0) + 1
+        seen: set[str] = set()
+        added = 0
+        duplicates = 0
+        invalid = 0
+        errors: list[str] = []
+        for index, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            parts = _split_card_paste_line(line)
+            if len(parts) != 3:
+                invalid += 1
+                if len(errors) < 5:
+                    errors.append(f"dòng {index}: cần 3 cột (số thẻ, CVV, ngày)")
+                continue
+            number_raw, cvv_raw, expiry_raw = parts
+            try:
+                pan = _card_digits(number_raw)
+                if len(pan) < 13 or len(pan) > 19:
+                    raise ValueError("Số thẻ chưa đúng")
+                code = _normalize_cvv(cvv_raw)
+                exp = _normalize_expiry(expiry_raw)
+            except ValueError as exc:
+                invalid += 1
+                if len(errors) < 5:
+                    errors.append(f"dòng {index}: {exc}")
+                continue
+            if pan in existing or pan in seen:
+                duplicates += 1
+                continue
+            seen.add(pan)
+            warehouses.append(
+                {
+                    "id": _new_id(),
+                    "name": f"Kho {next_number}",
+                    "status": "",
+                    "uses": 0,
+                    "card": {"number": pan, "expiry": exp, "cvv": code},
+                }
+            )
+            existing.add(pan)
+            next_number += 1
+            added += 1
+        if added:
+            _save(data)
+        return {"added": added, "duplicates": duplicates, "invalid": invalid, "errors": errors}
+
+
 def mark_card_warehouse_bad(warehouse_id: str) -> None:
     with _CREATED_LOCK:
         data = ensure_initialized()
