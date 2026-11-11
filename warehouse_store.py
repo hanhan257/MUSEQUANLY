@@ -1154,20 +1154,53 @@ def add_card_warehouse(number: str, expiry: str, cvv: str) -> dict[str, Any]:
 
 
 def _split_card_paste_line(line: str) -> list[str]:
-    """Tách một dòng dán thẻ thành 3 ô: số thẻ, CVV, ngày hết hạn.
-    Ưu tiên Tab / | / , / ; (copy từ bảng tính ra Tab); không có thì tách
-    theo khoảng trắng — nếu số thẻ có khoảng trắng giữa các nhóm số thì
-    gộp các phần đầu lại, 2 phần cuối là CVV và ngày."""
+    """Tách một dòng dán thẻ thành các ô. Ưu tiên Tab / | / , / ; (copy từ
+    bảng tính ra Tab — giữa các cột có thể có nhiều Tab liền nhau do ô
+    trống, phải bỏ các ô trống). Không có các dấu đó thì tách theo khoảng
+    trắng (số thẻ có khoảng trắng giữa các nhóm số vẫn tách ra rồi gộp lại
+    ở bước nhận dạng)."""
     text = (line or "").strip()
     if not text:
         return []
     for sep in ("\t", "|", ",", ";"):
         if sep in text:
-            return [part.strip() for part in text.split(sep)]
-    parts = text.split()
-    if len(parts) <= 3:
-        return parts
-    return [" ".join(parts[:-2]), parts[-2], parts[-1]]
+            return [part.strip() for part in text.split(sep) if part.strip()]
+    return text.split()
+
+
+def _parse_card_line(line: str) -> tuple[str, str, str]:
+    """Nhận dạng một dòng dán thẻ, 3 cột theo thứ tự bất kỳ:
+    - ngày hết hạn: ô có '/', dạng MM/YY hoặc MM/YYYY (11/27, 11/2029)
+    - số thẻ: ô có 13–19 chữ số
+    - CVV: ô còn lại (3 số; 1–2 số thì thêm số 0 đầu)
+    Số thẻ bị tách thành nhiều nhóm (2380 0300 ...) thì CVV là ô duy nhất
+    có 1–3 chữ số, các ô còn lại gộp thành số thẻ. Trả về
+    (số thẻ, CVV, ngày MM/YY)."""
+    parts = _split_card_paste_line(line)
+    if len(parts) < 3:
+        raise ValueError("cần 3 cột (số thẻ, CVV, ngày)")
+    digits = [_card_digits(part) for part in parts]
+    date_idx = [i for i, part in enumerate(parts) if "/" in part]
+    if len(date_idx) != 1:
+        raise ValueError("không nhận ra ngày hết hạn (cần dạng MM/YY)")
+    exp = _normalize_expiry(parts[date_idx[0]])
+    rest_idx = [i for i in range(len(parts)) if i != date_idx[0]]
+    long_idx = [i for i in rest_idx if 13 <= len(digits[i]) <= 19]
+    if len(long_idx) == 1:
+        number = digits[long_idx[0]]
+        cvv_idx = [i for i in rest_idx if i != long_idx[0]]
+        if len(cvv_idx) != 1:
+            raise ValueError("không nhận ra CVV")
+        return number, _normalize_cvv(parts[cvv_idx[0]]), exp
+    if len(long_idx) > 1:
+        raise ValueError("không nhận ra số thẻ")
+    short_idx = [i for i in rest_idx if 1 <= len(digits[i]) <= 3]
+    if len(short_idx) != 1:
+        raise ValueError("không nhận ra số thẻ / CVV")
+    number = "".join(digits[i] for i in rest_idx if i != short_idx[0])
+    if not 13 <= len(number) <= 19:
+        raise ValueError("Số thẻ chưa đúng")
+    return number, _normalize_cvv(parts[short_idx[0]]), exp
 
 
 def _normalize_cvv(value: str) -> str:
@@ -1180,7 +1213,9 @@ def _normalize_cvv(value: str) -> str:
 
 
 def add_card_warehouses_bulk(raw: str) -> dict[str, Any]:
-    """Dán nhiều thẻ, mỗi dòng một thẻ: số thẻ [Tab] CVV [Tab] MM/YY.
+    """Dán nhiều thẻ, mỗi dòng một thẻ, 3 cột theo thứ tự bất kỳ: số thẻ,
+    CVV, ngày hết hạn (dạng MM/YY hoặc MM/YYYY). Tool tự nhận ra cột nào
+    là số thẻ (13–19 số), cột nào là CVV (3 số), cột nào là ngày (có '/').
     Mỗi thẻ mới tự tạo một kho (Kho N nối tiếp). Thẻ trùng số với kho đã
     có hoặc trùng trong đoạn dán thì bỏ qua. Dòng lỗi (thiếu cột, số thẻ/
     CVV/ngày chưa đúng) được đếm riêng, không chặn các dòng đúng.
@@ -1205,19 +1240,8 @@ def add_card_warehouses_bulk(raw: str) -> dict[str, Any]:
         for index, line in enumerate(lines, start=1):
             if not line.strip():
                 continue
-            parts = _split_card_paste_line(line)
-            if len(parts) != 3:
-                invalid += 1
-                if len(errors) < 5:
-                    errors.append(f"dòng {index}: cần 3 cột (số thẻ, CVV, ngày)")
-                continue
-            number_raw, cvv_raw, expiry_raw = parts
             try:
-                pan = _card_digits(number_raw)
-                if len(pan) < 13 or len(pan) > 19:
-                    raise ValueError("Số thẻ chưa đúng")
-                code = _normalize_cvv(cvv_raw)
-                exp = _normalize_expiry(expiry_raw)
+                pan, code, exp = _parse_card_line(line)
             except ValueError as exc:
                 invalid += 1
                 if len(errors) < 5:
