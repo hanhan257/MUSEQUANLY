@@ -4465,10 +4465,13 @@ def create_meta_account(
                 if "auth.meta.com/language" in _u:
                     _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
                     try:
-                        page.reload(wait_until="domcontentloaded", timeout=60000)
+                        # Di thang toi link (navigation moi) thay vi chi
+                        # bam tai lai — buoc Meta chuyen sang man xac
+                        # nhan nguoi that.
+                        page.goto(_u, wait_until="domcontentloaded", timeout=60000)
                     except Exception:
                         pass
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(5000)
                     continue
                 # Man xac nhan nguoi that co the hien ngay tai day
                 # (sau khi load lai trang Meta Quest) — chuyen sang
@@ -4610,7 +4613,7 @@ def create_meta_account(
             success = False
             tried_auto = False
             manual_deadline = 0.0
-            for _ in range(48):
+            for _ in range(100):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
                 url = page.url or ""
@@ -4625,10 +4628,12 @@ def create_meta_account(
                 if "auth.meta.com/language" in url:
                     _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
                     try:
-                        page.reload(wait_until="domcontentloaded", timeout=60000)
+                        # Di thang toi link (navigation moi) thay vi chi
+                        # bam tai lai.
+                        page.goto(url, wait_until="domcontentloaded", timeout=60000)
                     except Exception:
                         pass
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(5000)
                     continue
                 if _text_visible(page, re.compile(r"Chào mừng|Welcome to Meta AI", re.I)):
                     success = True
