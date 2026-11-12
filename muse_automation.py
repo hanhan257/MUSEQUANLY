@@ -4031,6 +4031,12 @@ _META_CREATE_NEW_TEXT = re.compile(r"^Tạo tài khoản mới$|^Create a new ac
 # thay vi man gop "Bat dau tren Meta AI" (sinh nhat + mat khau).
 _META_NAME_TEXT = re.compile(r"Bạn tên là gì|What.s your name", re.I)
 _META_BIRTHDAY_TEXT = re.compile(r"Ngày sinh của bạn là khi nào|When.s your birthday", re.I)
+# Man "Luu thong tin dang nhap?" (bam "Luu") va man tom tat "Hoan tat
+# qua trinh tao tai khoan Meta" (tich o nhan email khuyen mai roi bam
+# "Tao tai khoan") — user 2026-11-12 23:26/23:27.
+_META_SAVE_LOGIN_TEXT = re.compile(r"Lưu thông tin đăng nhập|Save your login info", re.I)
+_META_FINISH_TEXT = re.compile(r"Hoàn tất quá trình tạo tài khoản Meta|Complete.*Meta account", re.I)
+_META_MARKETING_TEXT = re.compile(r"Tôi muốn nhận email về các đợt giảm giá", re.I)
 
 
 def _dismiss_meta_cookie_banner(page: Page) -> bool:
@@ -4408,6 +4414,7 @@ def create_meta_account(
             person = _random_person()
             clicked_create_new = False
             confirmed = False
+            finish_clicked = False
             username = ""
             for _ in range(40):
                 if stop_requested():
@@ -4449,6 +4456,31 @@ def create_meta_account(
                         raise RuntimeError("Không bấm được Tiếp sau khi nhập ngày sinh")
                     page.wait_for_timeout(2000)
                     continue
+                # Man "Luu thong tin dang nhap?" (luong moi): bam "Luu".
+                if _text_visible(page, _META_SAVE_LOGIN_TEXT):
+                    _emit(on_progress, step="save_login", detail="Lưu thông tin đăng nhập…")
+                    if not _click_enabled_button(page, re.compile(r"^Lưu$|^Save$", re.I)) and not _click_button_js(page, re.compile(r"^Lưu$|^Save$", re.I)):
+                        raise RuntimeError("Không bấm được Lưu")
+                    page.wait_for_timeout(2000)
+                    continue
+                # Man tom tat "Hoan tat qua trinh tao tai khoan Meta"
+                # (luong moi): tich o nhan email khuyen mai Meta Quest
+                # roi bam "Tao tai khoan". Xong thi thoat vong lap, de
+                # vong xac minh lo phan con lai (nguoi that / meta.ai).
+                if _text_visible(page, _META_FINISH_TEXT):
+                    _emit(on_progress, step="finish", detail="Tích ô nhận email, tạo tài khoản…")
+                    try:
+                        _cb = page.get_by_role("checkbox", name=_META_MARKETING_TEXT).first
+                        if _cb.count() > 0 and not _cb.is_checked():
+                            _cb.check(timeout=5000)
+                    except Exception:
+                        pass
+                    if not _click_enabled_button(page, re.compile(r"^Tạo tài khoản$|^Create account$", re.I)) and not _click_button_js(page, re.compile(r"^Tạo tài khoản$|^Create account$", re.I)):
+                        raise RuntimeError("Không bấm được Tạo tài khoản")
+                    page.wait_for_timeout(2000)
+                    finish_clicked = True
+                    confirmed = True
+                    break
                 # Man xac nhan tao TK moi.
                 if not clicked_create_new and _text_visible(page, _META_CREATE_NEW_TEXT):
                     _emit(on_progress, step="email", detail="Xác nhận tạo tài khoản Meta mới…")
@@ -4482,23 +4514,27 @@ def create_meta_account(
                 page.wait_for_timeout(5000)
             if not confirmed:
                 raise RuntimeError("Nhập email xong nhưng không tới được màn xác nhận tên")
-            try:
-                # Ten nguoi dung Meta tu sinh nam trong o input gan nhan
-                # "Tên người dùng" — doc gia tri neu tim thay.
-                for frame in _frames(page):
-                    try:
-                        loc = frame.get_by_label(re.compile(r"Tên người dùng", re.I))
-                        if loc.count() > 0:
-                            username = (loc.first.input_value() or "").strip()
-                            break
-                    except Exception:
-                        continue
-            except Exception:
-                username = ""
-            _emit(on_progress, step="confirm", detail="Xác nhận tạo TK Meta…")
-            if not _click_enabled_button(page, re.compile(r"^Xác nhận$", re.I)):
-                raise RuntimeError("Không bấm được Xác nhận")
-            # Sau khi bam Xac nhan: Meta hien buoc "Xac nhan ban la nguoi that"
+            if not finish_clicked:
+                # Luong cu: man xac nhan ten nguoi dung — doc ten tu
+                # sinh roi bam "Xac nhan". Luong moi (man tom tat) da
+                # bam "Tao tai khoan" trong vong lap nen bo qua.
+                try:
+                    # Ten nguoi dung Meta tu sinh nam trong o input gan nhan
+                    # "Tên người dùng" — doc gia tri neu tim thay.
+                    for frame in _frames(page):
+                        try:
+                            loc = frame.get_by_label(re.compile(r"Tên người dùng", re.I))
+                            if loc.count() > 0:
+                                username = (loc.first.input_value() or "").strip()
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    username = ""
+                _emit(on_progress, step="confirm", detail="Xác nhận tạo TK Meta…")
+                if not _click_enabled_button(page, re.compile(r"^Xác nhận$", re.I)):
+                    raise RuntimeError("Không bấm được Xác nhận")
+            # Sau khi bam Xac nhan / Tao tai khoan: Meta hien buoc "Xac nhan ban la nguoi that"
             # (reCAPTCHA Enterprise, anh chup user 2026-11-12 21:37) truoc khi
             # tao xong TK: man trung gian -> bam Tiep tuc, roi checkbox
             # "Tôi không phải là người máy" (+ luoi chon hinh). Thu giai tu
