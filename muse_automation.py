@@ -4730,12 +4730,14 @@ def _muse_login_drive(
     LoginProgress; khi xong step='done', cookies_count > 0.
     muse_url chi dung cho test."""
     _emit(on_progress, step="open_muse", detail="Mở muse.ai…")
-    page.goto(muse_url or MUSE_URL, wait_until="domcontentloaded", timeout=90000)
+    # Muse tai qua proxy US co the rat cham — cho toi da 4 phut de
+    # trang tai xong (user 2026-11-12 23:40: "doi no load xong luon di").
+    page.goto(muse_url or MUSE_URL, wait_until="domcontentloaded", timeout=240000)
     try:
-        page.wait_for_load_state("load", timeout=20000)
+        page.wait_for_load_state("load", timeout=120000)
     except Exception:
         pass
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(5000)
     try:
         login_btn = page.get_by_role("button", name=re.compile(r"^Log in$", re.I)).first
         if login_btn.count() > 0 and login_btn.is_visible():
