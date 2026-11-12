@@ -305,6 +305,7 @@
       <div class="side-actions">
         <button type="button" class="btn-ghost" id="btnAccountView">Quản lý tài khoản<span class="side-count" id="countAccounts"></span></button>
         <button type="button" class="btn-ghost" id="btnCreateMuse">Tạo tài khoản Muse<span class="side-count" id="countPassword"></span></button>
+        <button type="button" class="btn-ghost" id="btnMetaView">Tài khoản META-MUSE<span class="side-count" id="countMeta"></span></button>
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ<span class="side-count" id="countCards"></span></button>
         <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy<span class="side-count" id="countProxies"></span></button>
         <button type="button" class="btn-ghost" id="btnGmailView">Kho Gmail<span class="side-count" id="countGmail"></span></button>
@@ -609,6 +610,88 @@
         </div>
         <div class="dash" id="captchaDash"></div>
       </div>
+      <div id="metaView" hidden>
+        <div class="top">
+          <div>
+            <h2>Tài khoản META-MUSE</h2>
+            <div class="meta">Tạo tài khoản Meta trước bằng IP của máy này (không dùng proxy US — IP Việt Nam thường không bị hỏi captcha), lưu vào kho bên dưới. Sau đó dùng proxy US để đăng nhập Muse bằng các tài khoản Meta đã lưu, cookie lưu vào Quản lý tài khoản.</div>
+          </div>
+        </div>
+        <div class="panel" style="margin-bottom:1rem;">
+          <h3>1. Tạo tài khoản Meta</h3>
+          <div class="meta">Mở Chrome bằng IP máy (không proxy), vào meta.ai rồi đăng nhập bằng mail temp, sinh nhật đủ 18 tuổi, mật khẩu cố định Congphu21@, tên người dùng do Meta tự sinh. Tài khoản tạo xong tự lưu vào kho bên dưới.</div>
+          <div class="toolbar" style="margin-bottom:0.75rem;">
+            <label class="check-inline">Số TK
+              <input type="number" id="metaCount" value="50" min="1" max="1000" style="width:4.5rem;" />
+            </label>
+            <label class="check-inline">Loại mail temp
+              <select id="metaMailProvider">
+                <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
+                <option value="mailtm">mail.tm — @fldubai.com</option>
+                <option value="genemail">generator.email — domain xoay</option>
+                <option value="guerrilla">Guerrilla Mail — domain xoay</option>
+                <option value="gmail">Gmail — @gmail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+                <option value="yahoo">Yahoo — @yahoo.com / @ymail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+                <option value="tempemail">Tempemail.cc — @icmans.com</option>
+                <option value="tenminutemail">10 Minute Mail — địa chỉ 10 phút</option>
+              </select>
+            </label>
+            <label class="check-inline">Trình duyệt
+              <select id="metaBrowser">
+                <option value="auto" selected>Tự động (mặc định)</option>
+                <option value="chromium">Chromium (Playwright)</option>
+                <option value="chrome">Google Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="coccoc">Cốc Cốc</option>
+              </select>
+            </label>
+            <label class="check-inline">Số luồng
+              <input type="number" id="metaMaxWorkers" value="5" min="1" max="20" style="width:4rem;" />
+            </label>
+            <button type="button" class="btn-primary" id="btnStartMetaCreate">Tạo tài khoản Meta</button>
+            <button type="button" class="btn-error" id="btnStopMetaCreate">Dừng</button>
+          </div>
+          <div class="login-status" id="metaCreateStatus"></div>
+        </div>
+        <div class="panel" style="margin-bottom:1rem;">
+          <h3>2. Đăng nhập Muse bằng TK Meta</h3>
+          <div class="meta">Lấy tài khoản Meta sẵn sàng trong kho (lấy theo thứ tự từ trên xuống), đăng nhập muse.ai bằng proxy US. Đăng nhập xong lưu cookie vào Quản lý tài khoản. Tài khoản nào lỗi sẽ tự mở lại thành sẵn sàng để thử lại proxy khác.</div>
+          <div class="toolbar" style="margin-bottom:0.75rem;">
+            <textarea id="metaLoginProxies" placeholder="Dán proxy US, mỗi dòng một proxy (để trống = dùng Kho proxy)&#10;1.2.3.4:8000&#10;5.6.7.8:8000:user:pass" style="flex:1;min-height:4.5rem;"></textarea>
+          </div>
+          <div class="toolbar" style="margin-bottom:0.75rem;">
+            <label class="check-inline">Số TK
+              <input type="number" id="metaLoginCount" value="5" min="1" max="1000" style="width:4.5rem;" />
+            </label>
+            <label class="check-inline">TK / proxy
+              <input type="number" id="metaLoginPerProxy" value="5" min="1" max="50" style="width:4rem;" />
+            </label>
+            <label class="check-inline">Số luồng
+              <input type="number" id="metaLoginWorkers" value="5" min="1" max="20" style="width:4rem;" />
+            </label>
+            <label class="check-inline">Trình duyệt
+              <select id="metaLoginBrowser">
+                <option value="auto" selected>Tự động (mặc định)</option>
+                <option value="chromium">Chromium (Playwright)</option>
+                <option value="chrome">Google Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="coccoc">Cốc Cốc</option>
+              </select>
+            </label>
+            <button type="button" class="btn-primary" id="btnStartMetaLogin">Đăng nhập Muse</button>
+            <button type="button" class="btn-error" id="btnStopMetaLogin">Dừng</button>
+          </div>
+          <div class="login-status" id="metaLoginStatus"></div>
+        </div>
+        <div class="dash" id="metaDash"></div>
+        <div class="toolbar" id="metaBulkBar" style="margin-bottom:0.75rem;">
+          <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedMeta" disabled>Xóa đã chọn</button>
+          <button type="button" class="btn-error btn-sm" id="btnDeleteAllMeta">Xóa tất cả</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetSelectedMeta" disabled>Mở lại đã chọn</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetAllMeta">Mở lại tất cả</button>
+        </div>
+        <div class="panel"><div id="metaTable"></div></div>
+      </div>
     </main>
   </div>
 
@@ -720,6 +803,7 @@
       const gmail = viewMode === 'gmail';
       const yahoo = viewMode === 'yahoo';
       const captcha = viewMode === 'captcha';
+      const meta = viewMode === 'meta';
       const buff = viewMode === 'buff';
       const account = viewMode === 'account' || viewMode === 'kho';
       document.getElementById('signupView').hidden = !signup;
@@ -728,10 +812,12 @@
       document.getElementById('gmailView').hidden = !gmail;
       document.getElementById('yahooView').hidden = !yahoo;
       document.getElementById('captchaView').hidden = !captcha;
+      document.getElementById('metaView').hidden = !meta;
       document.getElementById('buffView').hidden = !buff;
       document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = 'Tạo tài khoản Muse';
       document.getElementById('btnCreateMuse').classList.toggle('active', viewMode === 'password');
+      document.getElementById('btnMetaView').classList.toggle('active', meta);
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnProxyView').classList.toggle('active', proxy);
       document.getElementById('btnGmailView').classList.toggle('active', gmail);
@@ -1666,6 +1752,7 @@
         set('countProxies', data.proxies);
         set('countGmail', data.gmail);
         set('countYahoo', data.yahoo);
+        set('countMeta', data.meta);
         set('countBuff', data.buff);
       } catch (e) { /* để lần sau */ }
     }
@@ -2106,6 +2193,254 @@
       document.getElementById('captchaApiKey').value = '';
       await loadCaptcha();
       toast('Đã lưu cài đặt giải captcha');
+    });
+    // --- Tài khoản META-MUSE ---
+    let metaRows = [];
+    const metaSelected = new Set();
+    function setMetaCreateStatus(text, kind) {
+      const box = document.getElementById('metaCreateStatus');
+      box.textContent = text || '';
+      box.className = text ? 'login-status show ' + (kind || 'running') : 'login-status';
+    }
+    function setMetaLoginStatus(text, kind) {
+      const box = document.getElementById('metaLoginStatus');
+      box.textContent = text || '';
+      box.className = text ? 'login-status show ' + (kind || 'running') : 'login-status';
+    }
+    function renderMeta(data) {
+      metaRows = (data && data.meta) || [];
+      const metaIds = new Set(metaRows.map(g => g.id));
+      metaSelected.forEach(id => { if (!metaIds.has(id)) metaSelected.delete(id); });
+      const delSelBtn = document.getElementById('btnDeleteSelectedMeta');
+      const delAllBtn = document.getElementById('btnDeleteAllMeta');
+      delSelBtn.disabled = metaSelected.size === 0;
+      delSelBtn.textContent = metaSelected.size ? `Xóa đã chọn (${metaSelected.size})` : 'Xóa đã chọn';
+      delAllBtn.disabled = metaRows.length === 0;
+      delAllBtn.textContent = metaRows.length ? `Xóa tất cả (${metaRows.length})` : 'Xóa tất cả';
+      const resetSelBtn = document.getElementById('btnResetSelectedMeta');
+      const resetAllBtn = document.getElementById('btnResetAllMeta');
+      const usedCount = metaRows.filter(g => g.status !== 'ready').length;
+      resetSelBtn.disabled = metaSelected.size === 0;
+      resetSelBtn.textContent = metaSelected.size ? `Mở lại đã chọn (${metaSelected.size})` : 'Mở lại đã chọn';
+      resetAllBtn.disabled = usedCount === 0;
+      resetAllBtn.textContent = usedCount ? `Mở lại tất cả (${usedCount})` : 'Mở lại tất cả';
+      const box = document.getElementById('metaTable');
+      const ready = metaRows.filter(g => g.status === 'ready').length;
+      document.getElementById('metaDash').innerHTML = `
+        <div class="stat"><b>${metaRows.length}</b><span>Tổng TK Meta</span></div>
+        <div class="stat good"><b>${ready}</b><span>Sẵn sàng</span></div>
+        <div class="stat bad"><b>${metaRows.length - ready}</b><span>Đã dùng</span></div>
+        <div class="stat"><b>1</b><span>TK Meta / 1 lần đăng nhập</span></div>`;
+      if (!metaRows.length) {
+        box.innerHTML = '<p class="hint">Chưa có TK Meta nào. Bấm “Tạo tài khoản Meta” ở trên để tạo bằng IP máy (không proxy US).</p>';
+        return;
+      }
+      const rows = metaRows.map((g, i) => {
+        const actions = [];
+        if (g.status !== 'ready') actions.push(`<button type="button" class="btn-ghost btn-sm" data-meta-reset="${g.id}">Mở lại</button>`);
+        actions.push(`<button type="button" class="btn-ghost btn-sm" data-meta-del="${g.id}">Xóa</button>`);
+        return `<tr><td class="check"><input type="checkbox" class="meta-check" data-meta-check="${g.id}" ${metaSelected.has(g.id) ? 'checked' : ''} /></td><td>${i + 1}</td><td><code>${escapeHtml(g.email || '')}</code></td><td>${escapeHtml(g.meta_username || '')}</td><td>${g.uses || 0} lượt</td><td>${g.status === 'ready' ? '<span class="badge live">Sẵn sàng</span>' : '<span class="badge no">Đã dùng</span>'}</td><td>${actions.join(' ')}</td></tr>`;
+      }).join('');
+      box.innerHTML = `<table class="tbl"><thead><tr><th class="check"><input type="checkbox" id="metaCheckAll" title="Chọn tất cả TK Meta" /></th><th>#</th><th>Email Meta</th><th>Tên người dùng</th><th>Lượt dùng</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      const checkAll = document.getElementById('metaCheckAll');
+      if (checkAll) {
+        const selected = metaRows.filter(g => metaSelected.has(g.id)).length;
+        checkAll.checked = metaRows.length > 0 && selected === metaRows.length;
+        checkAll.indeterminate = selected > 0 && selected < metaRows.length;
+        checkAll.addEventListener('change', () => {
+          metaRows.forEach(g => {
+            if (checkAll.checked) metaSelected.add(g.id);
+            else metaSelected.delete(g.id);
+          });
+          renderMeta({ meta: metaRows });
+        });
+      }
+      box.querySelectorAll('.meta-check').forEach(boxEl => {
+        boxEl.addEventListener('change', () => {
+          if (boxEl.checked) metaSelected.add(boxEl.dataset.metaCheck);
+          else metaSelected.delete(boxEl.dataset.metaCheck);
+          renderMeta({ meta: metaRows });
+        });
+      });
+      box.querySelectorAll('[data-meta-del]').forEach(btn => btn.addEventListener('click', () => deleteMeta(btn.getAttribute('data-meta-del'))));
+      box.querySelectorAll('[data-meta-reset]').forEach(btn => btn.addEventListener('click', () => resetMeta(btn.getAttribute('data-meta-reset'))));
+    }
+    async function loadMeta() {
+      const res = await fetch('/api/meta?t=' + Date.now(), { cache: 'no-store' });
+      renderMeta(await res.json());
+    }
+    async function deleteMeta(id) {
+      if (!confirm('Xóa TK Meta này khỏi kho?')) return;
+      const res = await fetch('/api/meta/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      renderMeta(data);
+      loadSidebarCounts();
+      toast('Đã xóa TK Meta');
+    }
+    async function resetMeta(id) {
+      const res = await fetch('/api/meta/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      renderMeta(data);
+      loadSidebarCounts();
+      toast('Đã mở lại TK Meta');
+    }
+    async function deleteMetaByIds(ids) {
+      const res = await fetch('/api/meta/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function resetMetaByIds(ids) {
+      const res = await fetch('/api/meta/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function stopMetaJob(btn) {
+      btn.disabled = true;
+      const res = await fetch('/api/batch/stop', { method: 'POST' });
+      const data = await res.json();
+      btn.disabled = false;
+      if (!data.ok) { toast('Không dừng được'); return; }
+      toast('Đã gửi lệnh dừng');
+    }
+    async function startMetaCreate() {
+      const count = Math.max(1, Math.min(1000, parseInt(document.getElementById('metaCount').value || '50', 10) || 50));
+      const mailProvider = document.getElementById('metaMailProvider').value || 'tempmail';
+      const browser = document.getElementById('metaBrowser').value || 'auto';
+      const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('metaMaxWorkers').value || '5', 10) || 5));
+      if (loginPollTimer) clearInterval(loginPollTimer);
+      setMetaCreateStatus(`Tạo ${count} tài khoản Meta bằng IP máy (không proxy US) · ${maxWorkers} luồng`, 'running');
+      const res = await fetch('/api/meta/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count, mail_provider: mailProvider, browser, max_workers: maxWorkers }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setMetaCreateStatus(data.error || 'Không tạo được', 'error'); return; }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') {
+          setMetaCreateStatus(line || 'Đang tạo TK Meta…', 'running');
+          await loadMeta();
+        } else if (st.status === 'done') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setMetaCreateStatus(st.detail || 'Đã tạo xong TK Meta', 'done');
+          await loadMeta();
+          loadSidebarCounts();
+          toast(st.detail || 'Đã tạo xong TK Meta');
+        } else if (st.status === 'error' || st.status === 'unknown') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setMetaCreateStatus(st.error || st.detail || 'Lỗi tạo TK Meta', 'error');
+          await loadMeta();
+          loadSidebarCounts();
+        }
+      }, 1500);
+    }
+    async function startMetaLogin() {
+      const count = Math.max(1, Math.min(1000, parseInt(document.getElementById('metaLoginCount').value || '5', 10) || 5));
+      const perProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('metaLoginPerProxy').value || '5', 10) || 5));
+      const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('metaLoginWorkers').value || '5', 10) || 5));
+      const browser = document.getElementById('metaLoginBrowser').value || 'auto';
+      const proxies = document.getElementById('metaLoginProxies').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (loginPollTimer) clearInterval(loginPollTimer);
+      setMetaLoginStatus(`Đăng nhập Muse bằng ${count} TK Meta qua proxy US · ${maxWorkers} luồng`, 'running');
+      const res = await fetch('/api/meta/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count, proxies: proxies.join('\n'), per_proxy: perProxy, max_workers: maxWorkers, browser }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setMetaLoginStatus(data.error || 'Không đăng nhập được', 'error'); return; }
+      loginPollTimer = setInterval(async () => {
+        const st = await fetch('/api/login/' + data.job_id).then(r => r.json());
+        const line = [st.detail, st.error].filter(Boolean).join(' — ');
+        if (st.status === 'running') {
+          setMetaLoginStatus(line || 'Đang đăng nhập Muse…', 'running');
+          await loadMeta();
+        } else if (st.status === 'done') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setMetaLoginStatus(st.detail || 'Đã đăng nhập xong', 'done');
+          await loadMeta();
+          loadSidebarCounts();
+          await loadCreated();
+          toast(st.detail || 'Đã đăng nhập xong');
+        } else if (st.status === 'error' || st.status === 'unknown') {
+          clearInterval(loginPollTimer);
+          loginPollTimer = null;
+          setMetaLoginStatus(st.error || st.detail || 'Lỗi đăng nhập Muse', 'error');
+          await loadMeta();
+          loadSidebarCounts();
+        }
+      }, 1500);
+    }
+    document.getElementById('btnMetaView').addEventListener('click', async () => {
+      viewMode = 'meta';
+      applyView();
+      await loadMeta();
+    });
+    document.getElementById('btnStartMetaCreate').addEventListener('click', startMetaCreate);
+    document.getElementById('btnStopMetaCreate').addEventListener('click', () => stopMetaJob(document.getElementById('btnStopMetaCreate')));
+    document.getElementById('btnStartMetaLogin').addEventListener('click', startMetaLogin);
+    document.getElementById('btnStopMetaLogin').addEventListener('click', () => stopMetaJob(document.getElementById('btnStopMetaLogin')));
+    document.getElementById('btnDeleteSelectedMeta').addEventListener('click', async () => {
+      if (!metaSelected.size) return;
+      const ids = [...metaSelected];
+      if (!confirm(`Xóa ${ids.length} TK Meta đã chọn? TK bị xóa khỏi kho, không lấy lại được.`)) return;
+      const data = await deleteMetaByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      metaSelected.clear();
+      renderMeta(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${ids.length} TK Meta`);
+    });
+    document.getElementById('btnDeleteAllMeta').addEventListener('click', async () => {
+      if (!metaRows.length) return;
+      if (!confirm(`Xóa tất cả ${metaRows.length} TK Meta trong kho? Không lấy lại được.`)) return;
+      const data = await deleteMetaByIds(metaRows.map(g => g.id));
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      metaSelected.clear();
+      renderMeta(data);
+      loadSidebarCounts();
+      toast('Đã xóa tất cả TK Meta');
+    });
+    document.getElementById('btnResetSelectedMeta').addEventListener('click', async () => {
+      if (!metaSelected.size) return;
+      const ids = [...metaSelected];
+      const data = await resetMetaByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      metaSelected.clear();
+      renderMeta(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${ids.length} TK Meta`);
+    });
+    document.getElementById('btnResetAllMeta').addEventListener('click', async () => {
+      const used = metaRows.filter(g => g.status !== 'ready');
+      if (!used.length) return;
+      const data = await resetMetaByIds(used.map(g => g.id));
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      metaSelected.clear();
+      renderMeta(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${used.length} TK Meta`);
     });
     document.getElementById('btnAddGmail').addEventListener('click', async () => {
       const text = document.getElementById('gmailPaste').value;

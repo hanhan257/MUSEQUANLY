@@ -3927,3 +3927,480 @@ def login_muse(
                 except Exception:
                     pass
             return err
+
+
+# --- Tài khoản META-MUSE (v133) ---
+# Luồng 2 bước: (1) tạo TK Meta bằng IP của máy (KHÔNG proxy US) qua
+# meta.ai -> auth.meta.com, dùng mail temp, sinh nhật đủ 18 tuổi, mật khẩu
+# cố định Congphu21@; (2) dùng proxy US đăng nhập muse.ai bằng TK Meta đã lưu.
+# User mô tả luồng (4 ảnh chụp 2026-11-12): "Đăng nhập hoặc tạo tài khoản"
+# (Facebook / Instagram / "Dùng email hoặc số di động") -> nhập email ->
+# "Bắt đầu trên Meta AI" (sinh nhật + mật khẩu) -> "Chỉnh sửa thông tin về
+# Meta AI" (tên người dùng tự sinh) -> Xác nhận. IP Việt Nam không bị hỏi
+# captcha ở các bước đầu, NHƯNG sau khi bấm Xác nhận có bước "Xác nhận bạn
+# là người thật" (reCAPTCHA Enterprise — ảnh chụp user 2026-11-12 21:37):
+# màn trung gian -> bấm Tiếp tục, rồi checkbox "Tôi không phải là người
+# máy" (+ lưới chọn hình). create_meta_account xử lý bước này bằng dịch vụ
+# giải captcha tự động (v132, cần key) và chờ giải tay tối đa 3 phút.
+META_AI_URL = "https://www.meta.ai/"
+_META_AUTH_TEXT = re.compile(r"Đăng nhập hoặc tạo tài khoản", re.I)
+_META_START_TEXT = re.compile(r"Bắt đầu trên Meta AI", re.I)
+_META_EDIT_TEXT = re.compile(r"Chỉnh sửa thông tin về Meta AI", re.I)
+_META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
+
+
+def _meta_pick_div_option(page: Page, label_text: str, wanted: list[str]) -> bool:
+    """Chon 1 muc trong dropdown dang div: bam vao o co nhan label_text
+    (vd 'Ngày'), roi bam vao muc co text nam trong wanted. Tra True neu
+    chon duoc. (Du phong khi sinh nhat khong phai <select> that.)"""
+    opened = page.evaluate(
+        """([labelText, wanted]) => {
+            const norm = s => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            let trigger = null;
+            for (const el of document.querySelectorAll('div,button,span')) {
+                const own = [...el.childNodes].filter(n => n.nodeType === 3)
+                    .map(n => n.textContent).join('').trim();
+                if (norm(own) === norm(labelText)) { trigger = el; break; }
+            }
+            if (!trigger) return 'no-trigger';
+            trigger.click();
+            return 'opened';
+        }""",
+        [label_text, wanted],
+    )
+    if opened != "opened":
+        return False
+    page.wait_for_timeout(900)
+    picked = page.evaluate(
+        """(wanted) => {
+            const norm = s => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            const want = wanted.map(norm);
+            for (const el of document.querySelectorAll('[role="option"], li, div, button, span')) {
+                const t = norm(el.textContent);
+                if (!t || t.length > 40) continue;
+                if (want.includes(t)) { el.click(); return t; }
+            }
+            return '';
+        }""",
+        wanted,
+    )
+    return bool(picked)
+
+
+def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> None:
+    """Dien sinh nhat (du 18 tuoi) vao 3 o Ngay/Thang/Nam. Thu <select>
+    that truoc, roi thu dropdown dang div."""
+    day_cands = list(birthday.get("day") or [])
+    month_cands = list(birthday.get("month") or [])
+    year_cands = list(birthday.get("year") or [])
+    selects = page.locator("select")
+    if selects.count() >= 3:
+        for idx, cands in enumerate((day_cands, month_cands, year_cands)):
+            done = False
+            for cand in cands:
+                for kw in ("label", "value"):
+                    try:
+                        selects.nth(idx).select_option(**{kw: str(cand)})
+                        done = True
+                        break
+                    except Exception:
+                        continue
+                if done:
+                    break
+            if not done:
+                raise RuntimeError(f"Không chọn được {'Ngày' if idx == 0 else 'Tháng' if idx == 1 else 'Năm'} sinh")
+        return
+    # Dropdown dang div (kieu facebook.com/r.php): bam JS nhu probe truoc day.
+    labels = ("Ngày", "Tháng", "Năm")
+    cand_lists = (day_cands, month_cands, year_cands)
+    for label_text, cands in zip(labels, cand_lists):
+        if not _meta_pick_div_option(page, label_text, [str(c) for c in cands]):
+            raise RuntimeError(f"Không chọn được {label_text} sinh (không thấy dropdown)")
+
+
+def create_meta_account(
+    *,
+    mail_provider: str = "tempmail",
+    browser_name: str = "auto",
+    account_password: str | None = None,
+    on_progress: ProgressCallback | None = None,
+    entry_url: str | None = None,
+) -> LoginProgress:
+    """Tao 1 TK Meta bang IP cua may (KHONG dung proxy): mo meta.ai ->
+    dang nhap bang mail temp -> sinh nhat du 18 tuoi -> mat khau co dinh ->
+    xac nhan ten nguoi dung. Tra LoginProgress; khi xong: step='done',
+    detail co email, code = ten nguoi dung Meta tu sinh (co the rong).
+    entry_url chi dung cho test (trang gia mo phong auth.meta.com)."""
+    from mail_provider import (
+        client as mail_client,
+        create_mailbox_for,
+        error_class as mail_error_class,
+        label as mail_label,
+        normalize_provider,
+    )
+
+    _mail_provider = normalize_provider(mail_provider)
+    _mc = mail_client(_mail_provider)
+    wait_for_code = _mc.wait_for_code
+    _MailError = mail_error_class(_mail_provider)
+    _mail_label = mail_label(_mail_provider)
+    password = (account_password or "Congphu21@").strip() or "Congphu21@"
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        return LoginProgress(step="error", error=f"Chưa cài Playwright: {exc}")
+
+    # Tao mail TRUOC khi mo trinh duyet (kieu v122): tao mail co the cham.
+    _emit(on_progress, step="mail", detail="Đang tạo hộp thư temp cho TK Meta…")
+    try:
+        email, _mb_pw, mail_token = create_mailbox_for(_mail_provider, password, "password", proxies=None)
+    except Exception as exc:
+        err = LoginProgress(step="error", error=str(exc) or "Không tạo được hộp thư")
+        _emit(on_progress, **err.__dict__)
+        return err
+    if not email or not mail_token:
+        err = LoginProgress(step="error", error="Chưa tạo được hộp thư temp")
+        _emit(on_progress, **err.__dict__)
+        return err
+    _emit(on_progress, step="mail", detail=f"Hộp thư {email} đọc lại được. Bắt đầu tạo TK Meta.")
+
+    _emit(on_progress, step="starting", detail="Mở Chrome bằng IP máy (không dùng proxy)…")
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, None, headless=False, browser_name=browser_name)
+        except Exception as exc:
+            message = str(exc).split("╔", 1)[0].strip()
+            err = LoginProgress(step="error", error=message or "Không mở được Chrome")
+            _emit(on_progress, **err.__dict__)
+            return err
+        context = _new_browser_context(browser, None, browser_name)
+        try:
+            context.grant_permissions(["clipboard-read", "clipboard-write"])
+        except Exception:
+            pass
+        page = context.new_page()
+        page.set_default_timeout(20000)
+        try:
+            _emit(on_progress, step="open_meta", detail="Tải meta.ai…")
+            page.goto(entry_url or META_AI_URL, wait_until="domcontentloaded", timeout=90000)
+            try:
+                page.wait_for_load_state("load", timeout=20000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2000)
+            # Trang dang nhap Meta (auth.meta.com). Neu meta.ai hien nut
+            # Dang nhap thi bam vao truoc.
+            if not _text_visible(page, _META_AUTH_TEXT):
+                try:
+                    btn = page.get_by_role("button", name=re.compile(r"Đăng nhập|Log in", re.I)).first
+                    if btn.count() > 0 and btn.is_visible():
+                        btn.click()
+                        page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+            if not _text_visible(page, _META_AUTH_TEXT):
+                raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
+            _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
+            if not _click_enabled_button(page, _META_EMAIL_TEXT):
+                raise RuntimeError("Không thấy nút 'Dùng email hoặc số di động'")
+            page.wait_for_timeout(1500)
+            inp = page.get_by_placeholder("Số di động hoặc email")
+            inp.wait_for(state="visible", timeout=15000)
+            inp.fill(email)
+            _emit(on_progress, step="email", detail=f"Đã nhập {email} — chờ Meta tạo TK…")
+            if not _click_enabled_button(page, BTN_NEXT):
+                raise RuntimeError("Không bấm được Tiếp tục sau khi nhập email")
+            # Cho man sinh nhat; giua duong co the hoi ma OTP gui ve mail.
+            birthday_done = False
+            for _ in range(30):
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                if _text_visible(page, _META_START_TEXT):
+                    birthday_done = True
+                    break
+                if _text_visible(page, re.compile(r"captcha|Tôi không phải là người máy|robot", re.I)):
+                    raise RuntimeError("Gặp captcha lúc tạo TK Meta — thử lại sau hoặc đổi IP")
+                otp = page.locator('input[autocomplete="one-time-code"]')
+                if otp.count() > 0 and otp.first.is_visible():
+                    _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
+                    code = wait_for_code(mail_token, timeout=120, proxies=None)
+                    otp.first.fill(code)
+                    _emit(on_progress, step="enter_otp", detail="Đã nhập mã — bấm Tiếp tục…")
+                    if not _click_enabled_button(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
+                    page.wait_for_timeout(2000)
+                page.wait_for_timeout(5000)
+            if not birthday_done:
+                raise RuntimeError("Nhập email xong nhưng không tới được màn sinh nhật")
+            # Sinh nhat + mat khau.
+            _emit(on_progress, step="birthday", detail="Điền sinh nhật đủ 18 tuổi…")
+            birthday = _random_birthday()
+            _meta_fill_birthday(page, birthday)
+            pw = page.get_by_placeholder("Mật khẩu")
+            if pw.count() == 0:
+                pw = page.locator('input[type="password"]').first
+            pw.wait_for(state="visible", timeout=15000)
+            pw.fill(password)
+            _emit(on_progress, step="password", detail="Đã điền mật khẩu — bấm Tiếp tục…")
+            if not _click_enabled_button(page, BTN_NEXT):
+                raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu")
+            # Man xac nhan ten nguoi dung.
+            username = ""
+            confirmed = False
+            for _ in range(12):
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                if _text_visible(page, _META_EDIT_TEXT):
+                    confirmed = True
+                    break
+                otp = page.locator('input[autocomplete="one-time-code"]')
+                if otp.count() > 0 and otp.first.is_visible():
+                    _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
+                    code = wait_for_code(mail_token, timeout=120, proxies=None)
+                    otp.first.fill(code)
+                    if not _click_enabled_button(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
+                    page.wait_for_timeout(2000)
+                page.wait_for_timeout(5000)
+            if not confirmed:
+                raise RuntimeError("Nhập mật khẩu xong nhưng không tới được màn xác nhận tên")
+            try:
+                # Ten nguoi dung Meta tu sinh nam trong o input gan nhan
+                # "Tên người dùng" — doc gia tri neu tim thay.
+                for frame in _frames(page):
+                    try:
+                        loc = frame.get_by_label(re.compile(r"Tên người dùng", re.I))
+                        if loc.count() > 0:
+                            username = (loc.first.input_value() or "").strip()
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                username = ""
+            _emit(on_progress, step="confirm", detail="Xác nhận tạo TK Meta…")
+            if not _click_enabled_button(page, re.compile(r"^Xác nhận$", re.I)):
+                raise RuntimeError("Không bấm được Xác nhận")
+            # Sau khi bam Xac nhan: Meta hien buoc "Xac nhan ban la nguoi that"
+            # (reCAPTCHA Enterprise, anh chup user 2026-11-12 21:37) truoc khi
+            # tao xong TK: man trung gian -> bam Tiep tuc, roi checkbox
+            # "Tôi không phải là người máy" (+ luoi chon hinh). Thu giai tu
+            # dong 1 lan bang dich vu (v132, can key 2Captcha/CapSolver);
+            # khong duoc thi doi user giai tay trong Chrome toi da 3 phut.
+            # Thanh cong khi: het auth.meta.com (ve meta.ai) HOAC trang hien
+            # "Chào mừng / Welcome to Meta AI".
+            success = False
+            tried_auto = False
+            manual_deadline = 0.0
+            for _ in range(48):
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                url = page.url or ""
+                if "meta.ai" in url and "auth.meta.com" not in url:
+                    success = True
+                    break
+                if _text_visible(page, re.compile(r"Chào mừng|Welcome to Meta AI", re.I)):
+                    success = True
+                    break
+                otp = page.locator('input[autocomplete="one-time-code"]')
+                if otp.count() > 0 and otp.first.is_visible():
+                    _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
+                    code = wait_for_code(mail_token, timeout=120, proxies=None)
+                    otp.first.fill(code)
+                    if not _click_enabled_button(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
+                    page.wait_for_timeout(2000)
+                    continue
+                # Man trung gian "Xac nhan ban la nguoi that..." (chua co
+                # khung recaptcha) -> bam Tiep tuc.
+                if _text_visible(page, HUMAN_GATE) and not _captcha_visible(page):
+                    _emit(on_progress, step="verify", detail="Thấy màn xác nhận người thật — bấm Tiếp tục…")
+                    if _click_enabled_button(page, BTN_NEXT):
+                        page.wait_for_timeout(2000)
+                    else:
+                        page.wait_for_timeout(2000)
+                    continue
+                # reCAPTCHA (checkbox / luoi chon hinh).
+                if _captcha_visible(page) or _text_visible(page, re.compile(r"Tôi không phải là người máy", re.I)):
+                    if not tried_auto:
+                        tried_auto = True
+                        _emit(on_progress, step="captcha", detail="Thấy reCAPTCHA — thử giải tự động bằng dịch vụ…")
+                        ok, note = _try_auto_solve_captcha(page)
+                        if ok:
+                            _emit(on_progress, step="captcha", detail=f"Đã giải tự động bằng {note} — bấm Tiếp tục…")
+                            page.wait_for_timeout(1500)
+                            if _click_enabled_button(page, BTN_NEXT):
+                                page.wait_for_timeout(2000)
+                            continue
+                        _emit(
+                            on_progress,
+                            step="needs_user",
+                            detail=f"Không giải tự động được ({note}) — giải tay trong Chrome, tool chờ tối đa 3 phút.",
+                        )
+                        manual_deadline = time.time() + 180
+                        continue
+                    # Da thu tu dong roi: doi user giai tay. Giai xong thi
+                    # nut Tiep tuc moi sang -> bam thu moi vong.
+                    if manual_deadline and time.time() > manual_deadline:
+                        raise RuntimeError("Chưa qua được xác nhận người thật (hết 3 phút chờ giải tay)")
+                    if _click_enabled_button(page, BTN_NEXT):
+                        page.wait_for_timeout(2000)
+                    else:
+                        page.wait_for_timeout(2000)
+                    continue
+                page.wait_for_timeout(5000)
+            url = page.url or ""
+            if not success and "auth.meta.com" in url:
+                raise RuntimeError("Xác nhận xong nhưng chưa vào được Meta AI")
+            result = LoginProgress(
+                step="done",
+                detail=f"Đã tạo TK Meta {email}" + (f" ({username})" if username else ""),
+                code=username,
+                final_url=url,
+            )
+            _emit(on_progress, **result.__dict__)
+            return result
+        except Exception as exc:
+            message = str(exc).strip() or "Không tạo được TK Meta"
+            err = LoginProgress(step="error", error=message, final_url=page.url if page else None)
+            _emit(on_progress, **err.__dict__)
+            return err
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+
+def login_muse_with_meta(
+    email: str,
+    password: str,
+    *,
+    proxy: str | None = None,
+    browser_name: str = "auto",
+    on_progress: ProgressCallback | None = None,
+    muse_url: str | None = None,
+) -> LoginProgress:
+    """Dang nhap muse.ai bang TK Meta da luu (dung proxy US): nhap email
+    Meta -> Continue -> neu hien dang nhap Meta (auth.meta.com) thi nhap
+    mat khau -> vao Muse, luu cookie. Tra LoginProgress; khi xong
+    step='done' va cookies_count > 0. muse_url chi dung cho test."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        return LoginProgress(step="error", error=f"Chưa cài Playwright: {exc}")
+
+    proxy_cfg = parse_proxy(proxy) if (proxy or "").strip() else None
+    if (proxy or "").strip() and not proxy_cfg:
+        err = LoginProgress(step="error", error="Proxy không đúng dạng ip:port hoặc ip:port:user:pass")
+        _emit(on_progress, **err.__dict__)
+        return err
+
+    _emit(on_progress, step="starting", detail=f"Mở Chrome qua proxy {proxy_cfg['server']}" if proxy_cfg else "Mở Chrome mới…")
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, proxy_cfg, headless=False, browser_name=browser_name)
+        except Exception as exc:
+            message = str(exc).split("╔", 1)[0].strip()
+            err = LoginProgress(step="error", error=message or "Không mở được Chrome")
+            _emit(on_progress, **err.__dict__)
+            return err
+        context = _new_browser_context(browser, proxy_cfg, browser_name)
+        page = context.new_page()
+        page.set_default_timeout(20000)
+        try:
+            _emit(on_progress, step="open_muse", detail="Tải muse.ai…")
+            page.goto(muse_url or MUSE_URL, wait_until="domcontentloaded", timeout=90000)
+            try:
+                page.wait_for_load_state("load", timeout=20000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2000)
+            # Nut "Log in" tren trang chu (neu co) -> form dang nhap.
+            try:
+                login_btn = page.get_by_role("button", name=re.compile(r"^Log in$", re.I)).first
+                if login_btn.count() > 0 and login_btn.is_visible():
+                    login_btn.click()
+                    page.wait_for_timeout(2000)
+            except Exception:
+                pass
+            email_inp = page.get_by_placeholder("Mobile number or email")
+            if email_inp.count() == 0:
+                email_inp = page.locator("input").first
+            email_inp.wait_for(state="visible", timeout=15000)
+            email_inp.fill(email)
+            _emit(on_progress, step="email", detail=f"Đã nhập {email} — bấm Continue…")
+            if not _click_enabled_button(page, BTN_NEXT):
+                raise RuntimeError("Không bấm được Continue sau khi nhập email")
+            # Cho 1 trong: vao thang Muse / man dang nhap Meta / nut Meta / ma OTP.
+            mail_token: str | None = None
+            wait_for_code = None
+            _mail_proxies = None
+            for _ in range(24):
+                if stop_requested():
+                    raise RuntimeError("Đã dừng")
+                if _logged_in_now(page):
+                    break
+                if _text_visible(page, re.compile(r"Ngày sinh|Sinh nhật|Confirm your age|Thẻ|Enter a valid credit card", re.I)):
+                    raise RuntimeError("Muse không nhận TK Meta này — quay lại bước tạo TK Meta")
+                meta_btn = page.get_by_text(re.compile(r"Tiếp tục bằng Meta|Continue with Meta", re.I))
+                if meta_btn.count() > 0 and meta_btn.first.is_visible():
+                    _emit(on_progress, step="meta_login", detail="Thấy nút đăng nhập bằng Meta — bấm vào…")
+                    meta_btn.first.click()
+                    page.wait_for_timeout(2000)
+                    continue
+                pw = page.locator('input[type="password"]')
+                if pw.count() > 0 and pw.first.is_visible():
+                    _emit(on_progress, step="meta_password", detail="Nhập mật khẩu Meta…")
+                    pw.first.fill(password)
+                    if not _click_enabled_button(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu Meta")
+                    page.wait_for_timeout(2000)
+                    continue
+                otp = page.locator('input[autocomplete="one-time-code"]')
+                if otp.count() > 0 and otp.first.is_visible():
+                    if wait_for_code is None:
+                        from mail_provider import (
+                            client as mail_client,
+                            provider_for_email,
+                            requests_proxies,
+                        )
+
+                        _mail_proxies = requests_proxies(proxy)
+                        _prov = provider_for_email(email, proxies=_mail_proxies)
+                        _mc = mail_client(_prov)
+                        wait_for_code = _mc.wait_for_code
+                        try:
+                            mail_token = _mc.login_mailbox(email, password, proxies=_mail_proxies)
+                        except Exception:
+                            mail_token = email
+                    _emit(on_progress, step="wait_code", detail="Chờ mã đăng nhập gửi về mail…")
+                    code = wait_for_code(mail_token or email, timeout=120, proxies=_mail_proxies)
+                    otp.first.fill(code)
+                    if not _click_enabled_button(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
+                    page.wait_for_timeout(2000)
+                    continue
+                page.wait_for_timeout(2500)
+            if not _logged_in_now(page):
+                raise RuntimeError("Đăng nhập xong nhưng chưa vào được Muse")
+            cookies = page.context.cookies()
+            record = save_account_cookies(email, cookies, cookie_source="meta-login")
+            result = LoginProgress(
+                step="done",
+                detail=f"Đã đăng nhập Muse bằng TK Meta {email}",
+                cookies_count=int(record.get("count") or 0),
+                final_url=page.url,
+            )
+            _emit(on_progress, **result.__dict__)
+            return result
+        except Exception as exc:
+            message = str(exc).strip() or "Không đăng nhập được Muse bằng TK Meta"
+            err = LoginProgress(step="error", error=message, final_url=page.url if page else None)
+            _emit(on_progress, **err.__dict__)
+            return err
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass

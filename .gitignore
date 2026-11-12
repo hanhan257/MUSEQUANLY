@@ -12,6 +12,7 @@ yahoo_accounts.json
 
 # Kho Tempemail.cc: token JWT hop thu — KHONG commit file nay.
 tempemail_tokens.json
+meta_accounts.json
 
 # Giai captcha: key API 2Captcha/CapSolver — KHONG commit file nay.
 captcha_config.json

@@ -27,8 +27,10 @@ from muse_automation import (
     LoginProgress,
     check_token_usage,
     clear_stop,
+    create_meta_account,
     create_muse_account,
     login_muse,
+    login_muse_with_meta,
     normalize_browser,
     normalize_proxy_line,
     redeem_invite_for_account,
@@ -94,7 +96,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v132"
+APP_BUILD = "signup-v133"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2250,6 +2252,347 @@ def api_yahoo_reset_many():
     return jsonify({"ok": True, "reset": reset, **yahoo_summary()})
 
 
+# --- Tài khoản META-MUSE (v133) ---
+# Buoc 1: tao TK Meta bang IP may (KHONG proxy US) qua meta.ai, luu vao Kho
+# TK Meta. Buoc 2: dung proxy US dang nhap muse.ai bang TK Meta da luu.
+def _meta_publish(job_id: str, total: int, state: dict, state_lock: threading.Lock, unit: str = "TK Meta được") -> None:
+    with state_lock:
+        running = list(state["running"])
+        fails = list(state["failures"])
+        steps = dict(state.get("steps") or {})
+        text = (
+            f"{state['ok']}/{total} {unit} · {state['finished']} lần thử · {state['fail']} lỗi"
+            + (f" · đang chạy {', '.join(running)}" if running else "")
+        )
+        step_lines = [f"{em}: {steps[em]}" for em in running if steps.get(em)]
+        if step_lines:
+            text += "\n" + "\n".join(step_lines)
+        if fails:
+            text += "\n" + "\n".join(fails)
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": text,
+            "done_count": state["finished"],
+            "ok_count": state["ok"],
+            "fail_count": state["fail"],
+            "failures": fails,
+            "total": total,
+        },
+    )
+
+
+def _meta_create_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int) -> None:
+    box = {"key": f"luồng {index}", "email": ""}
+
+    def on_progress(p: LoginProgress) -> None:
+        if p.step == "mail" and p.detail:
+            m = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", p.detail)
+            if m and not box["email"]:
+                old = box["key"]
+                box["email"] = m.group(0)
+                box["key"] = box["email"]
+                with state_lock:
+                    state["running"] = [box["key"] if x == old else x for x in state["running"]]
+                    if old in (state.get("steps") or {}):
+                        state["steps"][box["key"]] = state["steps"].pop(old)
+        if p.detail:
+            with state_lock:
+                state.setdefault("steps", {})[box["key"]] = p.detail
+        _meta_publish(job_id, total, state, state_lock)
+
+    with state_lock:
+        state["running"].append(box["key"])
+    try:
+        result = create_meta_account(
+            mail_provider=mail_provider,
+            browser_name=browser,
+            account_password=ACCOUNT_PASSWORD,
+            on_progress=on_progress,
+        )
+    except Exception as exc:
+        result = LoginProgress(step="error", error=str(exc))
+    with state_lock:
+        state["running"] = [x for x in state["running"] if x != box["key"]]
+        (state.get("steps") or {}).pop(box["key"], None)
+        state["finished"] += 1
+        if result.step == "done":
+            state["ok"] += 1
+            try:
+                from meta_store import add_meta_account
+
+                email = box["email"]
+                if not email:
+                    m = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", result.detail or "")
+                    email = m.group(0) if m else ""
+                if email:
+                    add_meta_account(email, ACCOUNT_PASSWORD, result.code or "")
+            except Exception:
+                pass
+        else:
+            state["fail"] += 1
+            err = (result.error or "Không tạo được TK Meta").strip()
+            line = f"{box['email'] or box['key']}: {err}"
+            state["failures"].append(line)
+            state["last_error"] = line
+    _meta_publish(job_id, total, state, state_lock)
+
+
+def _run_meta_create_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int) -> None:
+    """Chạy bù đến đủ số TK Meta: count là số TK TẠO THÀNH CÔNG cần có.
+    Chỉ dừng khi đủ số TK hoặc người dùng bấm Dừng (như batch signup)."""
+    clear_stop()
+    from mail_provider import normalize_provider
+
+    mail_provider = normalize_provider(mail_provider)
+    max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
+    target = max(0, int(count or 0))
+    state: dict = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "steps": {}}
+    state_lock = threading.Lock()
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": f"Tạo {target} tài khoản Meta · không dùng proxy (IP máy)",
+            "total": target,
+            "done_count": 0,
+            "ok_count": 0,
+            "fail_count": 0,
+        },
+    )
+    if target < 1:
+        _set_job(job_id, {"status": "error", "step": "done", "detail": "Số tài khoản phải từ 1 trở lên.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
+        return
+    while state["ok"] < target and not stop_requested():
+        deficit = target - state["ok"]
+        n = min(deficit, max_workers)
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            list(pool.map(lambda i: _meta_create_one(job_id, target, state, state_lock, mail_provider, browser, i + 1), range(n)))
+    if state["ok"] >= target:
+        _set_job(
+            job_id,
+            {
+                "status": "done",
+                "step": "done",
+                "detail": f"Đã tạo {state['ok']} tài khoản Meta · {state['finished']} lần thử · {state['fail']} lỗi",
+                "done_count": state["finished"],
+                "ok_count": state["ok"],
+                "fail_count": state["fail"],
+                "failures": list(state["failures"]),
+                "total": target,
+            },
+        )
+    else:
+        _set_job(
+            job_id,
+            {
+                "status": "error",
+                "step": "done",
+                "detail": "Đã dừng tạo TK Meta.",
+                "error": state.get("last_error") or "",
+                "done_count": state["finished"],
+                "ok_count": state["ok"],
+                "fail_count": state["fail"],
+                "failures": list(state["failures"]),
+                "total": target,
+            },
+        )
+
+
+def _meta_login_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, account: dict, proxy: str, browser: str) -> None:
+    email = (account.get("email") or "").strip()
+    password = (account.get("password") or "").strip() or ACCOUNT_PASSWORD
+
+    def on_progress(p: LoginProgress) -> None:
+        if p.detail:
+            with state_lock:
+                state.setdefault("steps", {})[email] = p.detail
+        _meta_publish(job_id, total, state, state_lock, unit="TK Muse đăng nhập được")
+
+    with state_lock:
+        state["running"].append(email)
+    try:
+        result = login_muse_with_meta(email, password, proxy=proxy, browser_name=browser, on_progress=on_progress)
+    except Exception as exc:
+        result = LoginProgress(step="error", error=str(exc))
+    with state_lock:
+        state["running"] = [x for x in state["running"] if x != email]
+        (state.get("steps") or {}).pop(email, None)
+        state["finished"] += 1
+        if result.step == "done":
+            state["ok"] += 1
+        else:
+            state["fail"] += 1
+            err = (result.error or "Không đăng nhập được").strip()
+            line = f"{email}: {err}"
+            state["failures"].append(line)
+            state["last_error"] = line
+            # Đăng nhập lỗi thì mở lại TK về sẵn sàng để thử lại proxy khác.
+            try:
+                from meta_store import reset_meta_accounts
+
+                reset_meta_accounts([email])
+            except Exception:
+                pass
+    _meta_publish(job_id, total, state, state_lock, unit="TK Muse đăng nhập được")
+
+
+def _run_meta_login_batch(job_id: str, count: int, proxies: list[str], per_proxy: int, max_workers: int, browser: str, use_proxy_warehouse: bool) -> None:
+    """Đăng nhập muse.ai bằng TK Meta sẵn sàng trong kho, mỗi TK qua 1
+    proxy US (mỗi proxy tối đa per_proxy TK)."""
+    clear_stop()
+    max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
+    per_proxy = max(1, min(50, int(per_proxy or 5)))
+    proxies = [line.strip() for line in (proxies or []) if line and line.strip()]
+    if use_proxy_warehouse:
+        pool_records = usable_proxies(per_proxy)
+        proxies = [str(p.get("proxy") or "") for p in pool_records if str(p.get("proxy") or "").strip()]
+    target = max(0, int(count or 0))
+    from meta_store import reset_meta_accounts, take_meta_account
+
+    accounts = []
+    for _ in range(target):
+        acct = take_meta_account()
+        if not acct:
+            break
+        accounts.append(acct)
+    if not accounts:
+        _set_job(job_id, {"status": "error", "step": "done", "detail": "Kho TK Meta đã hết — tạo TK Meta trước rồi đăng nhập.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
+        return
+    if not proxies:
+        reset_meta_accounts([a.get("email") or "" for a in accounts])
+        _set_job(job_id, {"status": "error", "step": "done", "detail": "Chưa có proxy US — dán proxy US vào ô hoặc thêm vào Kho proxy.", "total": target, "done_count": 0, "ok_count": 0, "fail_count": 0})
+        return
+    state: dict = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "steps": {}}
+    state_lock = threading.Lock()
+    total = len(accounts)
+    _set_job(
+        job_id,
+        {
+            "status": "running",
+            "step": "batch",
+            "detail": f"Đăng nhập Muse bằng {total} TK Meta · {len(proxies)} proxy US",
+            "total": total,
+            "done_count": 0,
+            "ok_count": 0,
+            "fail_count": 0,
+        },
+    )
+    lanes = []
+    for i, acct in enumerate(accounts):
+        proxy = proxies[(i // per_proxy) % len(proxies)]
+        lanes.append((acct, proxy))
+    workers = min(len(lanes), max_workers)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(lambda lane: _meta_login_one(job_id, total, state, state_lock, lane[0], lane[1], browser), lanes))
+    if stop_requested():
+        _set_job(job_id, {"status": "error", "step": "done", "detail": "Đã dừng đăng nhập.", "error": state.get("last_error") or "", "done_count": state["finished"], "ok_count": state["ok"], "fail_count": state["fail"], "failures": list(state["failures"]), "total": total})
+        return
+    _set_job(
+        job_id,
+        {
+            "status": "done",
+            "step": "done",
+            "detail": f"Đã đăng nhập Muse {state['ok']}/{total} TK Meta · {state['fail']} lỗi",
+            "done_count": state["finished"],
+            "ok_count": state["ok"],
+            "fail_count": state["fail"],
+            "failures": list(state["failures"]),
+            "total": total,
+        },
+    )
+
+
+@app.get("/api/meta")
+def api_meta_list():
+    from meta_store import meta_summary
+
+    return jsonify({"ok": True, **meta_summary()})
+
+
+@app.post("/api/meta/create")
+def api_meta_create():
+    from mail_provider import normalize_provider
+
+    body = request.get_json(force=True, silent=True) or {}
+    mail_provider = normalize_provider(body.get("mail_provider"))
+    browser = normalize_browser(body.get("browser"))
+    try:
+        count = int(body.get("count") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        max_workers = int(body.get("max_workers") or BATCH_PARALLEL)
+    except (TypeError, ValueError):
+        max_workers = BATCH_PARALLEL
+    max_workers = max(1, min(MAX_WORKERS, max_workers))
+    if count < 1 or count > SIGNUP_MAX:
+        return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
+    job_id = uuid.uuid4().hex[:12]
+    _set_job(job_id, {"status": "running", "step": "batch", "detail": f"Tạo {count} tài khoản Meta · không dùng proxy (IP máy)", "total": count})
+    thread = threading.Thread(target=_run_meta_create_batch, args=(job_id, count, mail_provider, browser, max_workers), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "count": count, "max_workers": max_workers})
+
+
+@app.post("/api/meta/login")
+def api_meta_login():
+    body = request.get_json(force=True, silent=True) or {}
+    browser = normalize_browser(body.get("browser"))
+    try:
+        count = int(body.get("count") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    proxies = [normalize_proxy_line(line) for line in (body.get("proxies") or "").splitlines() if normalize_proxy_line(line)]
+    use_proxy_warehouse = not proxies
+    try:
+        per_proxy = int(body.get("per_proxy") or 5)
+    except (TypeError, ValueError):
+        per_proxy = 5
+    per_proxy = max(1, min(50, per_proxy))
+    try:
+        max_workers = int(body.get("max_workers") or BATCH_PARALLEL)
+    except (TypeError, ValueError):
+        max_workers = BATCH_PARALLEL
+    max_workers = max(1, min(MAX_WORKERS, max_workers))
+    if count < 1 or count > SIGNUP_MAX:
+        return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
+    job_id = uuid.uuid4().hex[:12]
+    _set_job(job_id, {"status": "running", "step": "batch", "detail": f"Đăng nhập Muse bằng {count} TK Meta", "total": count})
+    thread = threading.Thread(target=_run_meta_login_batch, args=(job_id, count, proxies, per_proxy, max_workers, browser, use_proxy_warehouse), daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "job_id": job_id, "count": count})
+
+
+@app.post("/api/meta/delete")
+def api_meta_delete():
+    from meta_store import delete_meta_accounts, meta_summary
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or ([body.get("id")] if body.get("id") else [])
+    removed = delete_meta_accounts([str(item) for item in ids])
+    if not removed:
+        return jsonify({"ok": False, "error": "Không thấy TK Meta."}), 404
+    return jsonify({"ok": True, "removed": removed, **meta_summary()})
+
+
+@app.post("/api/meta/reset-many")
+def api_meta_reset_many():
+    from meta_store import meta_summary, reset_meta_accounts
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "error": "Chưa chọn TK Meta."}), 400
+    reset = reset_meta_accounts([str(item) for item in ids])
+    if not reset:
+        return jsonify({"ok": False, "error": "Không thấy TK Meta."}), 404
+    return jsonify({"ok": True, "reset": reset, **meta_summary()})
+
+
 @app.get("/api/summary")
 def api_summary():
     """Số lượng active/tổng cho sidebar: tài khoản có cookie / tổng tài khoản."""
@@ -2283,6 +2626,12 @@ def api_summary():
         yahoo_rows = _list_yahoo()
     except Exception:
         yahoo_rows = []
+    try:
+        from meta_store import list_meta_accounts as _list_meta
+
+        meta_rows = _list_meta()
+    except Exception:
+        meta_rows = []
     return jsonify(
         {
             "ok": True,
@@ -2302,6 +2651,10 @@ def api_summary():
             "yahoo": {
                 "active": sum(1 for g in yahoo_rows if g.get("status") == "ready"),
                 "total": len(yahoo_rows),
+            },
+            "meta": {
+                "active": sum(1 for g in meta_rows if g.get("status") == "ready"),
+                "total": len(meta_rows),
             },
         }
     )
