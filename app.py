@@ -96,7 +96,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v133"
+APP_BUILD = "signup-v134"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2284,7 +2284,7 @@ def _meta_publish(job_id: str, total: int, state: dict, state_lock: threading.Lo
     )
 
 
-def _meta_create_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int) -> None:
+def _meta_create_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int, proxy: str = "") -> None:
     box = {"key": f"luồng {index}", "email": ""}
 
     def on_progress(p: LoginProgress) -> None:
@@ -2311,6 +2311,7 @@ def _meta_create_one(job_id: str, total: int, state: dict, state_lock: threading
             browser_name=browser,
             account_password=ACCOUNT_PASSWORD,
             on_progress=on_progress,
+            proxy=proxy or None,
         )
     except Exception as exc:
         result = LoginProgress(step="error", error=str(exc))
@@ -2340,14 +2341,19 @@ def _meta_create_one(job_id: str, total: int, state: dict, state_lock: threading
     _meta_publish(job_id, total, state, state_lock)
 
 
-def _run_meta_create_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int) -> None:
+def _run_meta_create_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int, proxies: list[str] | None = None, per_proxy: int = 5) -> None:
     """Chạy bù đến đủ số TK Meta: count là số TK TẠO THÀNH CÔNG cần có.
-    Chỉ dừng khi đủ số TK hoặc người dùng bấm Dừng (như batch signup)."""
+    Chỉ dừng khi đủ số TK hoặc người dùng bấm Dừng (như batch signup).
+    proxies rong thi dung IP may; co proxy thi chia theo lane
+    (moi proxy lam per_proxy TK) nhu batch dang nhap."""
     clear_stop()
     from mail_provider import normalize_provider
 
     mail_provider = normalize_provider(mail_provider)
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
+    proxies = [p for p in (proxies or []) if p]
+    per_proxy = max(1, min(50, int(per_proxy or 5)))
+    proxy_note = f" · {len(proxies)} proxy ({per_proxy} TK/proxy)" if proxies else " · không dùng proxy (IP máy)"
     target = max(0, int(count or 0))
     state: dict = {"ok": 0, "fail": 0, "finished": 0, "running": [], "last_error": "", "failures": [], "steps": {}}
     state_lock = threading.Lock()
@@ -2356,7 +2362,7 @@ def _run_meta_create_batch(job_id: str, count: int, mail_provider: str, browser:
         {
             "status": "running",
             "step": "batch",
-            "detail": f"Tạo {target} tài khoản Meta · không dùng proxy (IP máy)",
+            "detail": f"Tạo {target} tài khoản Meta{proxy_note}",
             "total": target,
             "done_count": 0,
             "ok_count": 0,
@@ -2369,8 +2375,10 @@ def _run_meta_create_batch(job_id: str, count: int, mail_provider: str, browser:
     while state["ok"] < target and not stop_requested():
         deficit = target - state["ok"]
         n = min(deficit, max_workers)
+        base = state["finished"]
+        round_proxies = [proxies[(base + k) // per_proxy % len(proxies)] if proxies else "" for k in range(n)]
         with ThreadPoolExecutor(max_workers=n) as pool:
-            list(pool.map(lambda i: _meta_create_one(job_id, target, state, state_lock, mail_provider, browser, i + 1), range(n)))
+            list(pool.map(lambda i: _meta_create_one(job_id, target, state, state_lock, mail_provider, browser, i + 1, round_proxies[i]), range(n)))
     if state["ok"] >= target:
         _set_job(
             job_id,
@@ -2529,11 +2537,18 @@ def api_meta_create():
     except (TypeError, ValueError):
         max_workers = BATCH_PARALLEL
     max_workers = max(1, min(MAX_WORKERS, max_workers))
+    proxies = [normalize_proxy_line(line) for line in (body.get("proxies") or "").splitlines() if normalize_proxy_line(line)]
+    try:
+        per_proxy = int(body.get("per_proxy") or 5)
+    except (TypeError, ValueError):
+        per_proxy = 5
+    per_proxy = max(1, min(50, per_proxy))
     if count < 1 or count > SIGNUP_MAX:
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
+    proxy_note = f" · {len(proxies)} proxy ({per_proxy} TK/proxy)" if proxies else " · không dùng proxy (IP máy)"
     job_id = uuid.uuid4().hex[:12]
-    _set_job(job_id, {"status": "running", "step": "batch", "detail": f"Tạo {count} tài khoản Meta · không dùng proxy (IP máy)", "total": count})
-    thread = threading.Thread(target=_run_meta_create_batch, args=(job_id, count, mail_provider, browser, max_workers), daemon=True)
+    _set_job(job_id, {"status": "running", "step": "batch", "detail": f"Tạo {count} tài khoản Meta{proxy_note}", "total": count})
+    thread = threading.Thread(target=_run_meta_create_batch, args=(job_id, count, mail_provider, browser, max_workers, proxies, per_proxy), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "max_workers": max_workers})
 

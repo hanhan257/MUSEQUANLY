@@ -1407,18 +1407,21 @@ def _launch_browser(p, proxy_cfg, *, headless: bool = False, browser_name: str =
 
 
 def _browser_context_kwargs(
-    proxy_cfg: dict[str, str] | None, browser_name: str = "auto", fingerprint: dict | None = None
+    proxy_cfg: dict[str, str] | None, browser_name: str = "auto", fingerprint: dict | None = None, locale: str | None = None
 ) -> dict:
     """Proxy Mỹ thì Chrome phải ra giờ, ngôn ngữ và vị trí Mỹ. Lệch giờ là Muse từ chối tạo.
     Firefox KHÔNG hỗ trợ quyền clipboard-read/clipboard-write trong new_context
     (Playwright báo 'Browser.new_context: Unknown permission: clipboard-read'
     và flow chết ngay khi mở context) nên với Firefox chỉ xin geolocation.
     Viewport/screen lấy từ fingerprint (ngẫu nhiên mỗi lần tạo) để mỗi lần mở
-    không giống hệt nhau như trước (1280x900 cố định)."""
+    không giống hệt nhau như trước (1280x900 cố định).
+    locale='vi' giữ giờ/ngôn ngữ Việt Nam ngay cả khi có proxy (dùng cho tạo
+    TK Meta — IP Việt Nam thường không bị hỏi captcha)."""
     fp = fingerprint or _random_fingerprint(browser_name)
     firefox = (browser_name or "auto").strip().lower() == "firefox"
     kwargs: dict = {"viewport": fp["viewport"], "screen": fp["viewport"]}
-    if proxy_cfg:
+    use_us = bool(proxy_cfg) and (locale or "").strip().lower() not in ("vi", "vi-vn", "vn")
+    if use_us:
         kwargs["locale"] = "en-US"
         kwargs["timezone_id"] = "America/New_York"
         kwargs["geolocation"] = {"latitude": 40.7306, "longitude": -73.9352}
@@ -1526,13 +1529,13 @@ def _stealth_init_script(fp: dict, has_proxy: bool) -> str:
     }})();"""
 
 
-def _new_browser_context(browser, proxy_cfg: dict[str, str] | None, browser_name: str = "auto"):
+def _new_browser_context(browser, proxy_cfg: dict[str, str] | None, browser_name: str = "auto", locale: str | None = None):
     """Tao context moi voi fingerprint ngau nhien + script an automation,
     nhat quan trong suot lan dung context do. Thay cho cap lenh new_context
     + add_init_script(script gia fingerprint) o 4 cho (redeem, token-check, signup,
-    login)."""
+    login). locale='vi' giu gio/ngon ngu Viet Nam ngay ca khi co proxy (tao TK Meta)."""
     fp = _random_fingerprint(browser_name)
-    context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name, fp))
+    context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name, fp, locale))
     context.add_init_script(_stealth_init_script(fp, bool(proxy_cfg)))
     return context
 
@@ -4025,12 +4028,15 @@ def create_meta_account(
     account_password: str | None = None,
     on_progress: ProgressCallback | None = None,
     entry_url: str | None = None,
+    proxy: str | None = None,
 ) -> LoginProgress:
-    """Tao 1 TK Meta bang IP cua may (KHONG dung proxy): mo meta.ai ->
-    dang nhap bang mail temp -> sinh nhat du 18 tuoi -> mat khau co dinh ->
-    xac nhan ten nguoi dung. Tra LoginProgress; khi xong: step='done',
-    detail co email, code = ten nguoi dung Meta tu sinh (co the rong).
-    entry_url chi dung cho test (trang gia mo phong auth.meta.com)."""
+    """Tao 1 TK Meta: mo meta.ai -> dang nhap bang mail temp -> sinh nhat
+    du 18 tuoi -> mat khau co dinh -> xac nhan ten nguoi dung. Tra
+    LoginProgress; khi xong: step='done', detail co email, code = ten nguoi
+    dung Meta tu sinh (co the rong). proxy=None thi dung IP cua may (khong
+    dung proxy); proxy='host:port[:user:pass]' thi Chrome mo qua proxy do
+    nhung context van giu gio/ngon ngu Viet Nam (locale='vi'). entry_url
+    chi dung cho test (trang gia mo phong auth.meta.com)."""
     from mail_provider import (
         client as mail_client,
         create_mailbox_for,
@@ -4045,6 +4051,15 @@ def create_meta_account(
     _MailError = mail_error_class(_mail_provider)
     _mail_label = mail_label(_mail_provider)
     password = (account_password or "Congphu21@").strip() or "Congphu21@"
+
+    # Kiem tra proxy TRUOC khi tao mail (sai dang thi loi ngay, khong phi mail).
+    proxy_cfg: dict[str, str] | None = None
+    if proxy and proxy.strip():
+        proxy_cfg = parse_proxy(proxy)
+        if proxy_cfg is None:
+            err = LoginProgress(step="error", error="Proxy không đúng dạng (host:port hoặc host:port:user:pass)")
+            _emit(on_progress, **err.__dict__)
+            return err
 
     try:
         from playwright.sync_api import sync_playwright
@@ -4065,16 +4080,16 @@ def create_meta_account(
         return err
     _emit(on_progress, step="mail", detail=f"Hộp thư {email} đọc lại được. Bắt đầu tạo TK Meta.")
 
-    _emit(on_progress, step="starting", detail="Mở Chrome bằng IP máy (không dùng proxy)…")
+    _emit(on_progress, step="starting", detail="Mở Chrome qua proxy…" if proxy_cfg else "Mở Chrome bằng IP máy (không dùng proxy)…")
     with sync_playwright() as p:
         try:
-            browser = _launch_browser(p, None, headless=False, browser_name=browser_name)
+            browser = _launch_browser(p, proxy_cfg, headless=False, browser_name=browser_name)
         except Exception as exc:
             message = str(exc).split("╔", 1)[0].strip()
             err = LoginProgress(step="error", error=message or "Không mở được Chrome")
             _emit(on_progress, **err.__dict__)
             return err
-        context = _new_browser_context(browser, None, browser_name)
+        context = _new_browser_context(browser, proxy_cfg, browser_name, locale="vi")
         try:
             context.grant_permissions(["clipboard-read", "clipboard-write"])
         except Exception:
@@ -4089,22 +4104,35 @@ def create_meta_account(
             except Exception:
                 pass
             page.wait_for_timeout(2000)
-            # Trang dang nhap Meta (auth.meta.com). Neu meta.ai hien nut
-            # Dang nhap thi bam vao truoc.
-            if not _text_visible(page, _META_AUTH_TEXT):
-                try:
-                    btn = page.get_by_role("button", name=re.compile(r"Đăng nhập|Log in", re.I)).first
-                    if btn.count() > 0 and btn.is_visible():
-                        btn.click()
-                        page.wait_for_timeout(2000)
-                except Exception:
-                    pass
-            if not _text_visible(page, _META_AUTH_TEXT):
-                raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
-            _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
-            if not _click_enabled_button(page, _META_EMAIL_TEXT):
-                raise RuntimeError("Không thấy nút 'Dùng email hoặc số di động'")
-            page.wait_for_timeout(1500)
+            # Trang dang nhap Meta (auth.meta.com). Meta co the dua thang
+            # sang man nhap email (khong qua man chon cach dang nhap) —
+            # cho 1 trong 2 man xuat hien roi moi xu ly.
+            email_first = False
+            for _ in range(12):
+                inp = page.get_by_placeholder("Số di động hoặc email")
+                if inp.count() > 0 and inp.first.is_visible():
+                    email_first = True
+                    break
+                if _text_visible(page, _META_AUTH_TEXT):
+                    break
+                page.wait_for_timeout(2500)
+            if not email_first:
+                # Chua o man nhap email: neu meta.ai chua chuyen sang
+                # auth.meta.com thi bam nut Dang nhap truoc.
+                if not _text_visible(page, _META_AUTH_TEXT):
+                    try:
+                        btn = page.get_by_role("button", name=re.compile(r"Đăng nhập|Log in", re.I)).first
+                        if btn.count() > 0 and btn.is_visible():
+                            btn.click()
+                            page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
+                if not _text_visible(page, _META_AUTH_TEXT):
+                    raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
+                _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
+                if not _click_enabled_button(page, _META_EMAIL_TEXT):
+                    raise RuntimeError("Không thấy nút 'Dùng email hoặc số di động'")
+                page.wait_for_timeout(1500)
             inp = page.get_by_placeholder("Số di động hoặc email")
             inp.wait_for(state="visible", timeout=15000)
             inp.fill(email)
