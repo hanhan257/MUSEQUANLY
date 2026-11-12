@@ -1182,24 +1182,36 @@ def _recovery_code_screen(page: Page) -> bool:
     return False
 
 
-def _click_enabled_button(page: Page, pattern: re.Pattern[str]) -> bool:
-    """Chỉ bấm nút đang sáng. Nút ẩn hoặc nút mờ phía trước không chặn nút thật."""
+def _click_enabled_button(page: Page, pattern: re.Pattern[str], reverse_text: bool = False) -> bool:
+    """Chỉ bấm nút đang sáng. Nút ẩn hoặc nút mờ phía trước không chặn nút thật.
+    reverse_text=True: voi nut dang text (khong phai <button>/<a>), duyet
+    match tu cuoi ve dau — phan tu trong cung chua text moi la nut that;
+    bam vao giua phan tu bao ngoai thi khong chuyen trang (gap o nut
+    'Dùng email hoặc số di động' cua Meta)."""
     for frame in _frames(page):
         groups = []
         try:
-            groups.append(frame.get_by_role("button", name=pattern))
+            groups.append(("role", frame.get_by_role("button", name=pattern)))
         except Exception:
             pass
         try:
-            groups.append(frame.get_by_text(pattern))
+            groups.append(("role", frame.get_by_role("link", name=pattern)))
         except Exception:
             pass
-        for group in groups:
+        try:
+            groups.append(("text", frame.get_by_text(pattern)))
+        except Exception:
+            pass
+        for kind, group in groups:
             try:
-                total = min(group.count(), 8)
+                total = group.count()
             except Exception:
                 continue
-            for index in range(total):
+            if kind == "text" and reverse_text:
+                indices = range(total - 1, max(total - 8, 0) - 1, -1)
+            else:
+                indices = range(min(total, 8))
+            for index in indices:
                 button = group.nth(index)
                 try:
                     if not button.is_visible() or not button.is_enabled():
@@ -4134,9 +4146,42 @@ def create_meta_account(
                 if not _text_visible(page, _META_AUTH_TEXT):
                     raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
                 _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
-                if not _click_enabled_button(page, _META_EMAIL_TEXT):
-                    raise RuntimeError("Không thấy nút 'Dùng email hoặc số di động'")
-                page.wait_for_timeout(1500)
+                # Bam nut email roi cho man nhap email hien. Neu man chon
+                # van con (click khong chuyen trang — nut la link/div long
+                # nhau) thi bam lai, toi da 3 lan.
+                email_shown = False
+                for _attempt in range(3):
+                    _click_enabled_button(page, _META_EMAIL_TEXT, reverse_text=True)
+                    for _tick in range(12):
+                        inp = page.get_by_placeholder("Số di động hoặc email")
+                        if inp.count() > 0 and inp.first.is_visible():
+                            email_shown = True
+                            break
+                        if _tick >= 3 and _text_visible(page, _META_AUTH_TEXT):
+                            break
+                        page.wait_for_timeout(2500)
+                    if email_shown:
+                        break
+                    if not _text_visible(page, _META_AUTH_TEXT):
+                        # Man chon da bien mat (dang chuyen trang) nhung o
+                        # nhap chua hien — cho them 20s thay vi bam lai.
+                        for _ in range(8):
+                            inp = page.get_by_placeholder("Số di động hoặc email")
+                            if inp.count() > 0 and inp.first.is_visible():
+                                email_shown = True
+                                break
+                            page.wait_for_timeout(2500)
+                        break
+                if not email_shown:
+                    try:
+                        _url = page.url or ""
+                    except Exception:
+                        _url = ""
+                    _chooser = _text_visible(page, _META_AUTH_TEXT)
+                    raise RuntimeError(
+                        "Bấm 'Dùng email hoặc số di động' xong nhưng không thấy ô nhập email"
+                        f" (trang: {_url or 'không rõ'}; màn chọn còn hiện: {'có' if _chooser else 'không'})"
+                    )
             inp = page.get_by_placeholder("Số di động hoặc email")
             inp.wait_for(state="visible", timeout=15000)
             inp.fill(email)
