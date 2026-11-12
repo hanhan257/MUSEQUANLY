@@ -1225,6 +1225,48 @@ def _click_enabled_button(page: Page, pattern: re.Pattern[str], reverse_text: bo
     return False
 
 
+def _click_button_js(page: Page, pattern: re.Pattern[str], reverse_text: bool = False) -> bool:
+    """Bam nut bang JavaScript (el.click()), khong kiem tra bi che.
+    Dung khi nut bi dropdown dang mo che (Playwright click() thuong tu
+    choi vi nut bi che) nhung nut van bam duoc. Chi dung lam fallback
+    sau khi _click_enabled_button that bai."""
+    for frame in _frames(page):
+        groups = []
+        try:
+            groups.append(("role", frame.get_by_role("button", name=pattern)))
+        except Exception:
+            pass
+        try:
+            groups.append(("role", frame.get_by_role("link", name=pattern)))
+        except Exception:
+            pass
+        try:
+            groups.append(("text", frame.get_by_text(pattern)))
+        except Exception:
+            pass
+        for kind, group in groups:
+            try:
+                total = group.count()
+            except Exception:
+                continue
+            if kind == "text" and reverse_text:
+                indices = range(total - 1, max(total - 8, 0) - 1, -1)
+            else:
+                indices = range(min(total, 8))
+            for index in indices:
+                button = group.nth(index)
+                try:
+                    if not button.is_visible() or not button.is_enabled():
+                        continue
+                    if (button.get_attribute("aria-disabled") or "").lower() == "true":
+                        continue
+                    button.evaluate("el => el.click()")
+                    return True
+                except Exception:
+                    continue
+    return False
+
+
 def _click_enabled_next(page: Page) -> bool:
     """Chỉ bấm Tiếp khi nút đã sáng. Nút mờ là form chưa nhận mã."""
     return _click_enabled_button(page, BTN_NEXT)
@@ -4361,7 +4403,9 @@ def create_meta_account(
             pw.wait_for(state="visible", timeout=15000)
             pw.fill(password)
             _emit(on_progress, step="password", detail="Đã điền mật khẩu — bấm Tiếp tục…")
-            if not _click_enabled_button(page, BTN_NEXT):
+            # Nut Tiep tuc co the bi dropdown sinh nhat dang mo che:
+            # click() thuong that bai vi bi che, fallback sang bam JS.
+            if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
                 raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu")
             # Man xac nhan ten nguoi dung.
             username = ""
