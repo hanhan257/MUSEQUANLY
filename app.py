@@ -96,7 +96,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v155"
+APP_BUILD = "signup-v156"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2515,12 +2515,10 @@ def _run_meta_login_batch(job_id: str, count: int, proxies: list[str], per_proxy
 
 
 def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int, muse_proxy: str) -> None:
-    """Mot TK Muse tron ven: tao TK Meta (mail temp, sinh nhat 18+,
-    mat khau co dinh) roi mo muse.ai NGAY TREN CUNG TRINH DUYET
-    (phien Meta con dang nhap) — Muse se hien TK Meta vua tao de
-    dang nhap (user 2026-11-12 23:31). CA HAI BUOC DUNG CHUNG 1
-    PROXY US ngay tu dau. TK Meta luon duoc luu vao kho (de thu lai
-    buoc 2 neu can)."""
+    """Tao TK Meta (mail temp, sinh nhat 18+, mat khau co dinh) roi
+    LUU vao kho META-MUSE; khong mo Muse ngay trong cung phien (tool
+    khong mo duoc trinh duyet Muse — user 2026-11-12 23:43). Dang nhap
+    Muse bang TK Meta da luu lam rieng sau (muc 2, nhu ban dau)."""
     box = {"key": f"luồng {index}", "email": ""}
 
     def on_progress(p: LoginProgress) -> None:
@@ -2537,12 +2535,11 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
         if p.detail:
             with state_lock:
                 state.setdefault("steps", {})[box["key"]] = p.detail
-        _meta_publish(job_id, total, state, state_lock, unit="TK Muse tạo được")
+        _meta_publish(job_id, total, state, state_lock, unit="TK Meta tạo được")
 
     with state_lock:
         state["running"].append(box["key"])
-    # Buoc 1+2: tao TK Meta roi mo muse.ai ngay tren cung trinh duyet
-    # (phien Meta con dang nhap) — dung luon proxy US.
+    # Chi tao TK Meta roi luu vao kho (khong mo Muse ngay).
     try:
         result = create_meta_account(
             mail_provider=mail_provider,
@@ -2550,7 +2547,6 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
             account_password=ACCOUNT_PASSWORD,
             on_progress=on_progress,
             proxy=muse_proxy or None,
-            muse_after=True,
         )
     except Exception as exc:
         result = LoginProgress(step="error", error=str(exc))
@@ -2568,39 +2564,21 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
             line = f"{email or box['key']}: {err}"
             state["failures"].append(line)
             state["last_error"] = line
-        _meta_publish(job_id, total, state, state_lock, unit="TK Muse tạo được")
+        _meta_publish(job_id, total, state, state_lock, unit="TK Meta tạo được")
         return
-    # Luu TK Meta vao kho (de thu lai buoc 2 neu dang nhap Muse loi).
+    # Luu TK Meta vao kho de dang nhap Muse rieng sau.
     try:
         from meta_store import add_meta_account
 
         add_meta_account(email, ACCOUNT_PASSWORD, result.code or "")
     except Exception:
         pass
-    # Dang nhap Muse da xong trong cung phien (muse_after=True):
-    # thanh cong khi detail ghi "va dang nhap Muse" (co cookie).
-    muse_ok = ("và đăng nhập Muse" in (result.detail or "")) and (result.cookies_count or 0) > 0
     with state_lock:
         state["running"] = [x for x in state["running"] if x != box["key"]]
         (state.get("steps") or {}).pop(box["key"], None)
         state["finished"] += 1
-        if muse_ok:
-            state["ok"] += 1
-            # Dang nhap Muse xong thi TK Meta nay da dung (de kho khong
-            # lay lai no o muc dang nhap lai).
-            try:
-                from meta_store import mark_meta_used
-
-                mark_meta_used(email)
-            except Exception:
-                pass
-        else:
-            state["fail"] += 1
-            err = (result.detail or "Không đăng nhập được Muse").strip()
-            line = f"{email}: Tạo Meta xong nhưng đăng nhập Muse lỗi — {err}"
-            state["failures"].append(line)
-            state["last_error"] = line
-    _meta_publish(job_id, total, state, state_lock, unit="TK Muse tạo được")
+        state["ok"] += 1
+    _meta_publish(job_id, total, state, state_lock, unit="TK Meta tạo được")
 
 
 def _run_meta_muse_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int, muse_proxies: list[str], muse_per_proxy: int, use_proxy_warehouse: bool) -> None:

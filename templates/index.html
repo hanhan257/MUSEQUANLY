@@ -572,12 +572,12 @@
         <div class="top">
           <div>
             <h2>Tài khoản META-MUSE</h2>
-            <div class="meta">Tạo tài khoản Muse trong một nút: tạo tài khoản Meta trước (mail temp, sinh nhật 18+, mật khẩu cố định), lưu vào kho bên dưới, rồi đăng nhập Muse bằng tài khoản đó qua proxy US, cookie lưu vào Quản lý tài khoản. Tài khoản nào tạo Meta xong mà đăng nhập Muse lỗi vẫn nằm trong kho để đăng nhập lại ở mục dưới.</div>
+            <div class="meta">Tạo tài khoản Meta rồi lưu vào kho bên dưới; sau đó đăng nhập Muse bằng tài khoản Meta đã lưu ở mục dưới (như ban đầu). Tool không mở trình duyệt Muse ngay sau khi tạo Meta.</div>
           </div>
         </div>
         <div class="panel" style="margin-bottom:1rem;">
-          <h3>Tạo tài khoản Muse</h3>
-          <div class="meta">Một nút làm cả hai bước, dùng chung 1 proxy US ngay từ đầu: tạo tài khoản Meta bằng mail temp qua proxy US (sinh nhật đủ 18 tuổi, mật khẩu cố định Congphu21@, tên người dùng do Meta tự sinh) rồi đăng nhập muse.ai bằng tài khoản Meta vừa tạo qua cùng proxy US đó. Tài khoản Meta tạo xong tự lưu vào kho bên dưới; đăng nhập Muse xong lưu cookie vào Quản lý tài khoản.</div>
+          <h3>Tạo tài khoản Meta</h3>
+          <div class="meta">Tạo tài khoản Meta bằng mail temp qua proxy US (sinh nhật đủ 18 tuổi, mật khẩu cố định Congphu21@, tên người dùng do Meta tự sinh) rồi lưu vào kho bên dưới. Đăng nhập Muse bằng tài khoản Meta đã lưu ở mục dưới.</div>
           <div class="toolbar" style="margin-bottom:0.75rem;">
             <textarea id="metaMuseProxies" placeholder="Proxy US, mỗi dòng một proxy (để trống = dùng Kho proxy)" style="flex:1;min-height:4.5rem;"></textarea>
           </div>
@@ -612,7 +612,7 @@
             <label class="check-inline">Số luồng
               <input type="number" id="metaMaxWorkers" value="5" min="1" max="20" style="width:4rem;" />
             </label>
-            <button type="button" class="btn-primary" id="btnStartMetaCreate">Tạo tài khoản Muse</button>
+            <button type="button" class="btn-primary" id="btnStartMetaCreate">Tạo tài khoản Meta</button>
             <button type="button" class="btn-error" id="btnStopMetaCreate">Dừng</button>
           </div>
           <div class="login-status" id="metaCreateStatus"></div>
