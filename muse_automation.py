@@ -4025,6 +4025,12 @@ _META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
 _META_COOKIE_TEXT = re.compile(r"Cho phép tất cả cookie|Allow all cookies", re.I)
 _META_EMAIL_HEADING = re.compile(r"Số di động hoặc email của bạn là gì|What is your mobile number or email", re.I)
 _META_CREATE_NEW_TEXT = re.compile(r"^Tạo tài khoản mới$|^Create a new account$|^Bắt đầu$|^Get started$", re.I)
+# Luong moi (vao thang auth.meta.com, user 2026-11-12 23:24): Meta tach
+# thanh cac man rieng — "Ban ten la gi?" (ho + ten) roi "Ngay sinh cua
+# ban la khi nao?" (Ngay/Thang/Nam rieng, khong co mat khau tren man),
+# thay vi man gop "Bat dau tren Meta AI" (sinh nhat + mat khau).
+_META_NAME_TEXT = re.compile(r"Bạn tên là gì|What.s your name", re.I)
+_META_BIRTHDAY_TEXT = re.compile(r"Ngày sinh của bạn là khi nào|When.s your birthday", re.I)
 
 
 def _dismiss_meta_cookie_banner(page: Page) -> bool:
@@ -4389,17 +4395,61 @@ def create_meta_account(
             _emit(on_progress, step="email", detail=f"Đã nhập {email} — chờ Meta tạo TK…")
             if not _click_enabled_button(page, BTN_NEXT):
                 raise RuntimeError("Không bấm được Tiếp tục sau khi nhập email")
-            # Cho man sinh nhat; giua duong co the hoi ma OTP gui ve mail,
-            # hoac man xac nhan "Tao tai khoan Meta moi?" (bam "Tao tai
-            # khoan moi" de tiep tuc).
-            birthday_done = False
+            # Xu ly cac man trung gian cho toi khi toi man xac nhan ten
+            # nguoi dung ("Chinh sua thong tin ve Meta AI"). Co 2 luong:
+            # - Luong cu: man gop "Bat dau tren Meta AI" (sinh nhat +
+            #   mat khau cung man).
+            # - Luong moi (auth.meta.com truc tiep): man "Ban ten la
+            #   gi?" -> man "Ngay sinh cua ban la khi nao?" -> man mat
+            #   khau rieng -> man xac nhan ten.
+            # Giua duong co the hoi ma OTP hoac man xac nhan "Tao tai
+            # khoan Meta moi?" (bam "Tao tai khoan moi"/"Bat dau").
+            birthday = _random_birthday()
+            person = _random_person()
             clicked_create_new = False
-            for _ in range(30):
+            confirmed = False
+            username = ""
+            for _ in range(40):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
-                if _text_visible(page, _META_START_TEXT):
-                    birthday_done = True
+                # Man xac nhan ten nguoi dung -> xong vong lap.
+                if _text_visible(page, _META_EDIT_TEXT):
+                    confirmed = True
                     break
+                # Man gop (luong cu): sinh nhat + mat khau cung man.
+                if _text_visible(page, _META_START_TEXT):
+                    _emit(on_progress, step="birthday", detail="Điền sinh nhật đủ 18 tuổi…")
+                    _meta_fill_birthday(page, birthday)
+                    pw = page.get_by_placeholder("Mật khẩu")
+                    if pw.count() == 0:
+                        pw = page.locator('input[type="password"]').first
+                    pw.wait_for(state="visible", timeout=15000)
+                    pw.fill(password)
+                    _emit(on_progress, step="password", detail="Đã điền mật khẩu — bấm Tiếp tục…")
+                    # Nut Tiep tuc co the bi dropdown sinh nhat dang mo
+                    # che: click() thuong that bai vi bi che, fallback
+                    # sang bam JS.
+                    if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu")
+                    page.wait_for_timeout(2000)
+                    continue
+                # Man ten (luong moi): dien ho ten.
+                if _text_visible(page, _META_NAME_TEXT):
+                    _emit(on_progress, step="name", detail="Điền họ tên…")
+                    _fill_name(page, person)
+                    if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp sau khi nhập tên")
+                    page.wait_for_timeout(2000)
+                    continue
+                # Man sinh nhat rieng (luong moi): dien sinh nhat.
+                if _text_visible(page, _META_BIRTHDAY_TEXT):
+                    _emit(on_progress, step="birthday", detail="Điền sinh nhật đủ 18 tuổi…")
+                    _meta_fill_birthday(page, birthday)
+                    if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp sau khi nhập ngày sinh")
+                    page.wait_for_timeout(2000)
+                    continue
+                # Man xac nhan tao TK moi.
                 if not clicked_create_new and _text_visible(page, _META_CREATE_NEW_TEXT):
                     _emit(on_progress, step="email", detail="Xác nhận tạo tài khoản Meta mới…")
                     if _click_enabled_button(page, _META_CREATE_NEW_TEXT) or _click_button_js(page, _META_CREATE_NEW_TEXT):
@@ -4409,6 +4459,17 @@ def create_meta_account(
                     clicked_create_new = True
                 if _text_visible(page, re.compile(r"captcha|Tôi không phải là người máy|robot", re.I)):
                     raise RuntimeError("Gặp captcha lúc tạo TK Meta — thử lại sau hoặc đổi IP")
+                # Man mat khau rieng (luong moi): chi co o mat khau,
+                # khong co sinh nhat (man gop da xu ly o tren nen chi
+                # con man rieng toi duoc day).
+                pw_only = page.locator('input[type="password"]').first
+                if pw_only.count() > 0 and pw_only.is_visible():
+                    _emit(on_progress, step="password", detail="Điền mật khẩu…")
+                    pw_only.fill(password)
+                    if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
+                        raise RuntimeError("Không bấm được Tiếp sau khi nhập mật khẩu")
+                    page.wait_for_timeout(2000)
+                    continue
                 otp = page.locator('input[autocomplete="one-time-code"]')
                 if otp.count() > 0 and otp.first.is_visible():
                     _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
@@ -4419,42 +4480,8 @@ def create_meta_account(
                         raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
                     page.wait_for_timeout(2000)
                 page.wait_for_timeout(5000)
-            if not birthday_done:
-                raise RuntimeError("Nhập email xong nhưng không tới được màn sinh nhật")
-            # Sinh nhat + mat khau.
-            _emit(on_progress, step="birthday", detail="Điền sinh nhật đủ 18 tuổi…")
-            birthday = _random_birthday()
-            _meta_fill_birthday(page, birthday)
-            pw = page.get_by_placeholder("Mật khẩu")
-            if pw.count() == 0:
-                pw = page.locator('input[type="password"]').first
-            pw.wait_for(state="visible", timeout=15000)
-            pw.fill(password)
-            _emit(on_progress, step="password", detail="Đã điền mật khẩu — bấm Tiếp tục…")
-            # Nut Tiep tuc co the bi dropdown sinh nhat dang mo che:
-            # click() thuong that bai vi bi che, fallback sang bam JS.
-            if not _click_enabled_button(page, BTN_NEXT) and not _click_button_js(page, BTN_NEXT):
-                raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu")
-            # Man xac nhan ten nguoi dung.
-            username = ""
-            confirmed = False
-            for _ in range(12):
-                if stop_requested():
-                    raise RuntimeError("Đã dừng")
-                if _text_visible(page, _META_EDIT_TEXT):
-                    confirmed = True
-                    break
-                otp = page.locator('input[autocomplete="one-time-code"]')
-                if otp.count() > 0 and otp.first.is_visible():
-                    _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
-                    code = wait_for_code(mail_token, timeout=120, proxies=None)
-                    otp.first.fill(code)
-                    if not _click_enabled_button(page, BTN_NEXT):
-                        raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
-                    page.wait_for_timeout(2000)
-                page.wait_for_timeout(5000)
             if not confirmed:
-                raise RuntimeError("Nhập mật khẩu xong nhưng không tới được màn xác nhận tên")
+                raise RuntimeError("Nhập email xong nhưng không tới được màn xác nhận tên")
             try:
                 # Ten nguoi dung Meta tu sinh nam trong o input gan nhan
                 # "Tên người dùng" — doc gia tri neu tim thay.
