@@ -4024,7 +4024,7 @@ _META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
 
 _META_COOKIE_TEXT = re.compile(r"Cho phép tất cả cookie|Allow all cookies", re.I)
 _META_EMAIL_HEADING = re.compile(r"Số di động hoặc email của bạn là gì|What is your mobile number or email", re.I)
-_META_CREATE_NEW_TEXT = re.compile(r"^Tạo tài khoản mới$|^Create a new account$", re.I)
+_META_CREATE_NEW_TEXT = re.compile(r"^Tạo tài khoản mới$|^Create a new account$|^Bắt đầu$|^Get started$", re.I)
 
 
 def _dismiss_meta_cookie_banner(page: Page) -> bool:
@@ -4402,7 +4402,7 @@ def create_meta_account(
                     break
                 if not clicked_create_new and _text_visible(page, _META_CREATE_NEW_TEXT):
                     _emit(on_progress, step="email", detail="Xác nhận tạo tài khoản Meta mới…")
-                    if _click_enabled_button(page, _META_CREATE_NEW_TEXT):
+                    if _click_enabled_button(page, _META_CREATE_NEW_TEXT) or _click_button_js(page, _META_CREATE_NEW_TEXT):
                         clicked_create_new = True
                         page.wait_for_timeout(2000)
                         continue
