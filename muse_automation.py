@@ -1430,7 +1430,15 @@ def _launch_browser(p, proxy_cfg, *, headless: bool = False, browser_name: str =
     Playwright."""
     name = normalize_browser(browser_name)
     if name == "firefox":
-        kwargs: dict = {"headless": headless}
+        kwargs: dict = {
+            "headless": headless,
+            # Tat bang dich cua Firefox (hien len che trang, tool khong
+            # bam duoc — gap khi dung proxy US o v145).
+            "firefox_user_prefs": {
+                "browser.translations.enable": False,
+                "browser.translations.automaticallyPopup": False,
+            },
+        }
         if proxy_cfg:
             kwargs["proxy"] = proxy_cfg
         try:
@@ -1495,6 +1503,7 @@ def _browser_launch_kwargs(proxy_cfg: dict[str, str] | None, *, headless: bool =
         "ignore_default_args": ["--enable-automation"],
         "args": [
             "--disable-features=Translate",
+            "--disable-translate",
             "--disable-blink-features=AutomationControlled",
             "--webrtc-ip-handling-policy=disable_non_proxied_udp",
             "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
