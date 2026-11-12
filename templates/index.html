@@ -359,6 +359,7 @@
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
             <option value="genemail">generator.email — domain xoay (mới)</option>
+            <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
           </select>
           <label for="signupBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này. Tự động = dùng Chrome/Edge đã cài, không có thì Chromium của Playwright.</label>
           <select id="signupBrowser">
@@ -405,6 +406,7 @@
             <option value="tempmail" selected>tempmail.plus — @mailto.plus (mặc định)</option>
             <option value="mailtm">mail.tm — @fldubai.com</option>
             <option value="genemail">generator.email — domain xoay (mới)</option>
+            <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
           </select>
           <label for="buffBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này.</label>
           <select id="buffBrowser">
@@ -1838,6 +1840,8 @@
         ? 'han + 9 số @fldubai.com · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
         : p === 'genemail'
         ? 'han + 9 số @<domain xoay của generator.email> · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
+        : p === 'guerrilla'
+        ? 'han + 9 số @<domain xoay của Guerrilla Mail> · mật khẩu hộp thư Congphu21@ · mail chỉ sống 1 giờ, tạo xong dùng ngay'
         : 'han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã';
     }
     function setSignupButtons(disabled) {

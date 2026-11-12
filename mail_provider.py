@@ -13,6 +13,9 @@ chi la doi module:
   dang nhap — dia chi la token giong tempmail.plus. Domain xoay (lay live
   tu /api/domains.php moi lan tao mail), doc inbox bang trang HTML
   /<domain>/<user> + cookie inbox_ctx (xem generator_email_client.py).
+- "guerrilla": Guerrilla Mail (them tu v128). API cong khai, khong can
+  dang ky/key — session theo cookie PHPSESSID, dat ten han + 9 so qua
+  set_email_user (xem guerrilla_mail_client.py). Mail chi song 1 gio.
 """
 import importlib
 from urllib.parse import quote, unquote, urlparse
@@ -21,6 +24,7 @@ PROVIDERS = {
     "tempmail": ("tempmail_plus_client", "TempMailPlusError", "tempmail.plus"),
     "mailtm": ("mailtm_client", "MailTmError", "mail.tm"),
     "genemail": ("generator_email_client", "GeneratorEmailError", "generator.email"),
+    "guerrilla": ("guerrilla_mail_client", "GuerrillaMailError", "guerrilla-mail"),
 }
 
 
@@ -77,12 +81,15 @@ def requests_proxies(proxy) -> dict | None:
 
 def normalize_provider(value) -> str:
     """'mailtm'/'mail.tm' -> 'mailtm', 'genemail'/'generator.email' ->
-    'genemail', moi thu khac -> 'tempmail' (mac dinh)."""
+    'genemail', 'guerrilla'/'guerrilla-mail' -> 'guerrilla', moi thu khac
+    -> 'tempmail' (mac dinh)."""
     v = (value or "").strip().lower().replace(".", "").replace("-", "").replace(" ", "")
     if v in ("mailtm",):
         return "mailtm"
     if v in ("genemail", "generatoremail"):
         return "genemail"
+    if v in ("guerrilla", "guerrillamail"):
+        return "guerrilla"
     return "tempmail"
 
 
@@ -131,6 +138,13 @@ def provider_for_email(email, proxies=None) -> str:
     if domain == "fldubai.com":
         return "mailtm"
     try:
+        from guerrilla_mail_client import DOMAINS as GUERRILLA_DOMAINS
+
+        if domain in {d.lower() for d in GUERRILLA_DOMAINS}:
+            return "guerrilla"
+    except Exception:
+        pass
+    try:
         from generator_email_client import is_active_domain
 
         if is_active_domain(domain, proxies=proxies, timeout=10):
@@ -152,6 +166,11 @@ def create_mailbox_for(provider, password: str, mode: str, proxies=None) -> tupl
         return mod.create_mailbox(password, proxies=proxies)
     if provider == "genemail":
         # Domain xoay — client tu lay danh sach live, khong truyen domain.
+        if mode == "password":
+            return mod.create_han_mailbox(password, proxies=proxies)
+        return mod.create_mailbox(password, proxies=proxies)
+    if provider == "guerrilla":
+        # Domain do server chon theo session, khong truyen domain.
         if mode == "password":
             return mod.create_han_mailbox(password, proxies=proxies)
         return mod.create_mailbox(password, proxies=proxies)

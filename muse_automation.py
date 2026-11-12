@@ -1348,17 +1348,25 @@ def _launch_browser(p, proxy_cfg, *, headless: bool = False, browser_name: str =
         raise
 
 
-def _browser_context_kwargs(proxy_cfg: dict[str, str] | None) -> dict:
-    """Proxy Mỹ thì Chrome phải ra giờ, ngôn ngữ và vị trí Mỹ. Lệch giờ là Muse từ chối tạo."""
+def _browser_context_kwargs(
+    proxy_cfg: dict[str, str] | None, browser_name: str = "auto"
+) -> dict:
+    """Proxy Mỹ thì Chrome phải ra giờ, ngôn ngữ và vị trí Mỹ. Lệch giờ là Muse từ chối tạo.
+    Firefox KHÔNG hỗ trợ quyền clipboard-read/clipboard-write trong new_context
+    (Playwright báo 'Browser.new_context: Unknown permission: clipboard-read'
+    và flow chết ngay khi mở context) nên với Firefox chỉ xin geolocation."""
+    firefox = (browser_name or "auto").strip().lower() == "firefox"
     kwargs: dict = {"viewport": {"width": 1280, "height": 900}}
     if proxy_cfg:
         kwargs["locale"] = "en-US"
         kwargs["timezone_id"] = "America/New_York"
         kwargs["geolocation"] = {"latitude": 40.7306, "longitude": -73.9352}
-        kwargs["permissions"] = ["geolocation", "clipboard-read", "clipboard-write"]
+        permissions = ["geolocation"] if firefox else ["geolocation", "clipboard-read", "clipboard-write"]
     else:
         kwargs["locale"] = "vi-VN"
-        kwargs["permissions"] = ["clipboard-read", "clipboard-write"]
+        permissions = [] if firefox else ["clipboard-read", "clipboard-write"]
+    if permissions:
+        kwargs["permissions"] = permissions
     return kwargs
 
 
@@ -2861,7 +2869,7 @@ def redeem_invite_for_account(
                 message = str(exc).split("╔", 1)[0].strip()
                 return {"ok": False, "email": email, "error": message or "Không mở được trình duyệt"}
             try:
-                context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+                context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
                 context.add_init_script(_HIDE_WEBDRIVER)
                 page = context.new_page()
                 page.set_default_timeout(20000)
@@ -2951,7 +2959,7 @@ def check_token_usage(
                 message = str(exc).split("╔", 1)[0].strip()
                 return _fail(message or "Không mở được trình duyệt")
             try:
-                context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+                context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
                 context.add_init_script(_HIDE_WEBDRIVER)
                 page = context.new_page()
                 page.set_default_timeout(20000)
@@ -3308,7 +3316,7 @@ def create_muse_account(
             err = LoginProgress(step="error", error=message or "Không mở được Chrome")
             _emit(on_progress, **err.__dict__)
             return err
-        context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+        context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
         context.add_init_script(_HIDE_WEBDRIVER)
         try:
             context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -3508,7 +3516,7 @@ def login_muse(
             except Exception:
                 pass
             return err
-        context = browser.new_context(**_browser_context_kwargs(proxy_cfg))
+        context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
         context.add_init_script(_HIDE_WEBDRIVER)
         page = context.new_page()
         page.set_default_timeout(20000)
