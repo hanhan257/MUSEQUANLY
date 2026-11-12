@@ -325,7 +325,7 @@
             <button type="button" class="btn-ghost" data-signup-count="10">10 TK</button>
             <button type="button" class="btn-ghost" data-signup-count="50">50 TK</button>
             <label class="check-inline">Số TK
-              <input type="number" id="signupCustomCount" value="3" min="1" max="200" style="width:4.2rem;" />
+              <input type="number" id="signupCustomCount" value="3" min="1" max="1000" style="width:4.2rem;" />
             </label>
             <button type="button" class="btn-primary" id="btnCustomSignup">Tạo</button>
             <label class="check-inline" title="Số TK tối đa cho kho mới — mặc định 50, muốn đổi thì nhập số vào đây">Kho mới
@@ -1876,11 +1876,10 @@
       }
       const perProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('signupPerProxy').value || '5', 10) || 5));
       const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('signupMaxWorkers').value || '5', 10) || 5));
-      if (proxies.length > 200) {
-        setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
+      if (proxies.length > 1000) {
+        setSignupStatus('Tối đa 1000 dòng proxy một lần.', 'error');
         return;
       }
-      if (proxies.length) count = Math.min(count, proxies.length * perProxy);
       const used = proxies.slice(0, Math.ceil(count / perProxy));
       const mailProvider = document.getElementById('signupMailProvider').value || 'tempmail';
       const browser = document.getElementById('signupBrowser').value || 'auto';
@@ -2270,16 +2269,16 @@
     document.getElementById('btnCustomSignup').addEventListener('click', () => {
       const proxies = signupProxyLines();
       if (proxies.length) {
-        if (proxies.length > 200) {
-          setSignupStatus('Tối đa 200 dòng proxy một lần.', 'error');
+        if (proxies.length > 1000) {
+          setSignupStatus('Tối đa 1000 dòng proxy một lần.', 'error');
           return;
         }
         startSignup(proxies.length, signupMode());
         return;
       }
       const count = Number(document.getElementById('signupCustomCount').value);
-      if (!Number.isInteger(count) || count < 1 || count > 200) {
-        setSignupStatus('Nhập số tài khoản từ 1 đến 200.', 'error');
+      if (!Number.isInteger(count) || count < 1 || count > 1000) {
+        setSignupStatus('Nhập số tài khoản từ 1 đến 1000.', 'error');
         return;
       }
       startSignup(count, signupMode());

@@ -94,10 +94,10 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v126"
+APP_BUILD = "signup-v127"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
-SIGNUP_MAX = 200
+SIGNUP_MAX = 1000
 BUFF_MAX_PER_CODE = 30  # 1 mã mời tối đa 30 lượt dùng (giới hạn của Muse)
 BUFF_MAX_CODES = 20
 BATCH_PARALLEL = 5
@@ -1208,7 +1208,7 @@ def _signup_one_run(
             fails = list(state["failures"])
             steps = dict(state.get("steps") or {})
             text = detail or (
-                f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+                f"{state['ok']}/{count} TK được · {state['finished']} lần thử · {state['fail']} lỗi"
                 + (f" · đang chạy {', '.join(running)}" if running else "")
             )
             # Batch nhieu TK: hien them buoc hien tai cua tung TK dang chay
@@ -1444,7 +1444,7 @@ def _run_signup_lane(
             running = list(state["running"])
             fails = list(state["failures"])
             text = (
-                f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+                f"{state['ok']}/{count} TK được · {state['finished']} lần thử · {state['fail']} lỗi"
                 + (f" · đang chạy {', '.join(running)}" if running else "")
             )
             note = state.get("invite_note") or ""
@@ -1483,7 +1483,7 @@ def _skip_lane_rest(job_id: str, count: int, state: dict, state_lock: threading.
         running = list(state["running"])
         fails = list(state["failures"])
         text = (
-            f"{state['finished']}/{count} xong · {state['ok']} được · {state['fail']} lỗi"
+            f"{state['ok']}/{count} TK được · {state['finished']} lần thử · {state['fail']} lỗi"
             + (f" · đang chạy {', '.join(running)}" if running else "")
         )
         note = state.get("invite_note") or ""
