@@ -4303,10 +4303,23 @@ def create_meta_account(
                 if _text_visible(page, _META_AUTH_TEXT):
                     break
                 if not clicked_login:
-                    # Nut Dang nhap co the la <button> hoac <a> (link) —
-                    # dung helper tim ca hai dang (nhu v136); neu bi che
-                    # thi bam bang JS.
-                    if _click_enabled_button(page, re.compile(r"Đăng nhập|Log in", re.I)) or _click_button_js(page, re.compile(r"Đăng nhập|Log in", re.I)):
+                    # Nut Dang nhap trang chu co data-testid="login-button"
+                    # (user gui HTML 2026-11-12 23:16) — tim bang testid
+                    # truoc cho chac, roi moi tim theo role/text.
+                    _clicked = False
+                    try:
+                        _lb = page.locator('[data-testid="login-button"]').first
+                        if _lb.count() > 0 and _lb.is_visible():
+                            try:
+                                _lb.click(timeout=5000)
+                            except Exception:
+                                _lb.evaluate("el => el.click()")
+                            _clicked = True
+                    except Exception:
+                        _clicked = False
+                    if not _clicked:
+                        _clicked = _click_enabled_button(page, re.compile(r"Đăng nhập|Log in", re.I)) or _click_button_js(page, re.compile(r"Đăng nhập|Log in", re.I))
+                    if _clicked:
                         clicked_login = True
                         page.wait_for_timeout(2000)
                         continue
