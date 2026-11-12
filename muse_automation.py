@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import re
@@ -1349,14 +1350,17 @@ def _launch_browser(p, proxy_cfg, *, headless: bool = False, browser_name: str =
 
 
 def _browser_context_kwargs(
-    proxy_cfg: dict[str, str] | None, browser_name: str = "auto"
+    proxy_cfg: dict[str, str] | None, browser_name: str = "auto", fingerprint: dict | None = None
 ) -> dict:
     """Proxy Mỹ thì Chrome phải ra giờ, ngôn ngữ và vị trí Mỹ. Lệch giờ là Muse từ chối tạo.
     Firefox KHÔNG hỗ trợ quyền clipboard-read/clipboard-write trong new_context
     (Playwright báo 'Browser.new_context: Unknown permission: clipboard-read'
-    và flow chết ngay khi mở context) nên với Firefox chỉ xin geolocation."""
+    và flow chết ngay khi mở context) nên với Firefox chỉ xin geolocation.
+    Viewport/screen lấy từ fingerprint (ngẫu nhiên mỗi lần tạo) để mỗi lần mở
+    không giống hệt nhau như trước (1280x900 cố định)."""
+    fp = fingerprint or _random_fingerprint(browser_name)
     firefox = (browser_name or "auto").strip().lower() == "firefox"
-    kwargs: dict = {"viewport": {"width": 1280, "height": 900}}
+    kwargs: dict = {"viewport": fp["viewport"], "screen": fp["viewport"]}
     if proxy_cfg:
         kwargs["locale"] = "en-US"
         kwargs["timezone_id"] = "America/New_York"
@@ -1390,7 +1394,90 @@ def _browser_launch_kwargs(proxy_cfg: dict[str, str] | None, *, headless: bool =
     return kwargs
 
 
-_HIDE_WEBDRIVER = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+# --- Fingerprint spoofing (v129) ---
+# Genlogin qua duoc buoc ngay sinh vi moi profile co fingerprint nhu may that
+# (canvas, WebGL, plugin, phan cung...). Playwright mac dinh de lo dau vet
+# automation: navigator.webdriver, canvas/WebGL giong het nhau moi lan mo,
+# viewport 1280x900 co dinh, plugins trong. Muse chan o buoc ngay sinh du
+# proxy co tot. Moi context lay mot fingerprint ngau nhien nhung nhat quan
+# trong suot lan dung context do (viewport, canvas seed, WebGL...). Khong
+# doi user_agent: UA phai khop dung ban trinh duyet that, doi UA moi lo.
+_VIEWPORTS = [(1920, 1080), (1366, 768), (1536, 864), (1440, 900), (1280, 720), (1600, 900)]
+_WEBGL_PAIRS = [
+    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon(TM) Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+]
+
+
+def _random_fingerprint(browser_name: str = "auto") -> dict:
+    """Mot fingerprint ngau nhien cho mot lan mo context. Moi lan tao TK goi
+    mot lan, giu nguyen trong suot lan do."""
+    width, height = random.choice(_VIEWPORTS)
+    vendor, renderer = random.choice(_WEBGL_PAIRS)
+    return {
+        "viewport": {"width": width, "height": height},
+        "hardware_concurrency": random.choice([4, 8, 8, 12, 16]),
+        "device_memory": random.choice([4, 8, 8]),
+        "webgl_vendor": vendor,
+        "webgl_renderer": renderer,
+        "canvas_seed": random.randint(1, 10**6),
+        # Win32 chi co tren Windows (may user); VM Linux de nguyen platform that
+        # cho khop UA Linux, khong gia Win32 o day.
+        "platform": "Win32" if os.name == "nt" else None,
+        # Firefox that khong co plugin Chrome; gia plugin Chrome vao Firefox
+        # chi lam lo hon nen chi gia cho trinh duyet Chromium.
+        "chromium": (browser_name or "auto").strip().lower() != "firefox",
+    }
+
+
+def _stealth_init_script(fp: dict, has_proxy: bool) -> str:
+    """Script chay truoc moi trang (add_init_script): an webdriver, gia
+    canvas/WebGL/plugin/phan cung theo fingerprint da random."""
+    vendor = json.dumps(fp["webgl_vendor"])
+    renderer = json.dumps(fp["webgl_renderer"])
+    seed = int(fp["canvas_seed"])
+    langs = '["en-US", "en"]' if has_proxy else '["vi-VN", "vi", "en-US", "en"]'
+    platform_patch = (
+        f"Object.defineProperty(navigator, 'platform', {{get: () => {json.dumps(fp['platform'])}}});"
+        if fp.get("platform")
+        else ""
+    )
+    plugins_patch = ""
+    if fp.get("chromium"):
+        plugins_patch = """const _mkPlugin = (name, filename, description) => ({name, filename, description, length: 1, item: () => null, namedItem: () => null});
+      const _plugins = [_mkPlugin('Chrome PDF Plugin', 'internal-pdf-viewer', 'Portable Document Format'), _mkPlugin('Chrome PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'), _mkPlugin('Native Client', 'internal-nacl-plugin', 'Native Client Executable')];
+      _plugins.item = (i) => _plugins[i] || null;
+      _plugins.namedItem = (n) => _plugins.find((p) => p.name === n) || null;
+      Object.defineProperty(navigator, 'plugins', {get: () => _plugins});"""
+    return f"""(() => {{
+      Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
+      {platform_patch}
+      Object.defineProperty(navigator, 'hardwareConcurrency', {{get: () => {fp['hardware_concurrency']}}});
+      Object.defineProperty(navigator, 'deviceMemory', {{get: () => {fp['device_memory']}}});
+      Object.defineProperty(navigator, 'languages', {{get: () => {langs}}});
+      {plugins_patch}
+      const _seed = {seed};
+      const _noise = (ctx, w, h) => {{ try {{ const x = _seed % Math.max(1, w); const y = (_seed >> 4) % Math.max(1, h); ctx.fillStyle = 'rgba(' + (_seed % 255) + ',' + ((_seed >> 3) % 255) + ',' + ((_seed >> 5) % 255) + ',0.02)'; ctx.fillRect(x, y, 1, 1); }} catch (e) {{}} }};
+      const _toDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function () {{ try {{ const c = this.getContext('2d'); if (c) _noise(c, this.width, this.height); }} catch (e) {{}} return _toDataURL.apply(this, arguments); }};
+      const _spoofGL = (proto) => {{ if (!proto) return; const _gp = proto.getParameter; proto.getParameter = function (p) {{ if (p === 37445) return {vendor}; if (p === 37446) return {renderer}; return _gp.call(this, p); }}; }};
+      try {{ _spoofGL(WebGLRenderingContext && WebGLRenderingContext.prototype); }} catch (e) {{}}
+      try {{ _spoofGL(WebGL2RenderingContext && WebGL2RenderingContext.prototype); }} catch (e) {{}}
+      try {{ const _q = navigator.permissions.query.bind(navigator.permissions); navigator.permissions.query = (params) => {{ if (params && params.name === 'notifications') return Promise.resolve({{state: 'prompt'}}); return _q(params); }}; }} catch (e) {{}}
+    }})();"""
+
+
+def _new_browser_context(browser, proxy_cfg: dict[str, str] | None, browser_name: str = "auto"):
+    """Tao context moi voi fingerprint ngau nhien + script an automation,
+    nhat quan trong suot lan dung context do. Thay cho cap lenh new_context
+    + add_init_script(script gia fingerprint) o 4 cho (redeem, token-check, signup,
+    login)."""
+    fp = _random_fingerprint(browser_name)
+    context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name, fp))
+    context.add_init_script(_stealth_init_script(fp, bool(proxy_cfg)))
+    return context
 
 
 _BIRTHDAY_PAGE = re.compile(r"ngày sinh|birthday|date of birth|sinh nhật", re.I)
@@ -2869,8 +2956,7 @@ def redeem_invite_for_account(
                 message = str(exc).split("╔", 1)[0].strip()
                 return {"ok": False, "email": email, "error": message or "Không mở được trình duyệt"}
             try:
-                context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
-                context.add_init_script(_HIDE_WEBDRIVER)
+                context = _new_browser_context(browser, proxy_cfg, browser_name)
                 page = context.new_page()
                 page.set_default_timeout(20000)
                 try:
@@ -2959,8 +3045,7 @@ def check_token_usage(
                 message = str(exc).split("╔", 1)[0].strip()
                 return _fail(message or "Không mở được trình duyệt")
             try:
-                context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
-                context.add_init_script(_HIDE_WEBDRIVER)
+                context = _new_browser_context(browser, proxy_cfg, browser_name)
                 page = context.new_page()
                 page.set_default_timeout(20000)
                 try:
@@ -3316,8 +3401,7 @@ def create_muse_account(
             err = LoginProgress(step="error", error=message or "Không mở được Chrome")
             _emit(on_progress, **err.__dict__)
             return err
-        context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
-        context.add_init_script(_HIDE_WEBDRIVER)
+        context = _new_browser_context(browser, proxy_cfg, browser_name)
         try:
             context.grant_permissions(["clipboard-read", "clipboard-write"])
         except Exception:
@@ -3516,8 +3600,7 @@ def login_muse(
             except Exception:
                 pass
             return err
-        context = browser.new_context(**_browser_context_kwargs(proxy_cfg, browser_name))
-        context.add_init_script(_HIDE_WEBDRIVER)
+        context = _new_browser_context(browser, proxy_cfg, browser_name)
         page = context.new_page()
         page.set_default_timeout(20000)
         try:
