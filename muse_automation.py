@@ -964,6 +964,31 @@ def _try_auto_solve_captcha(page: Page) -> tuple[bool, str]:
         return False, f"loi giai captcha ({exc})"
 
 
+def _click_recaptcha_checkbox(page: Page) -> bool:
+    """Tu bam vao o checkbox 'Tôi không phải là người máy' trong iframe
+    anchor cua reCAPTCHA (user 2026-11-13 00:05: 'da lam tool con bam
+    tay' — tool phai tu bam, khong de user bam tay). Tra True neu bam
+    duoc. Neu Google hien luoi chon hinh sau khi bam thi buoc goi cho
+    user giai tay (hoac thu token sau)."""
+    try:
+        frames = list(page.frames)
+    except Exception:
+        return False
+    for frame in frames:
+        url = (frame.url or "").lower()
+        if "recaptcha" not in url or "anchor" not in url:
+            continue
+        for sel in ("#recaptcha-anchor", ".recaptcha-checkbox", '[role="checkbox"]'):
+            try:
+                loc = frame.locator(sel)
+                if loc.count() > 0:
+                    loc.first.click(timeout=5000)
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 def _drive_until_selfie(page: Page, on_progress: ProgressCallback | None) -> str | None:
     """Đi tiếp màn xác minh người thật tới lúc up ảnh.
 
@@ -4673,6 +4698,15 @@ def create_meta_account(
                         if ok:
                             _emit(on_progress, step="captcha", detail=f"Đã giải tự động bằng {note} — bấm Tiếp tục…")
                             page.wait_for_timeout(1500)
+                            if _click_enabled_button(page, BTN_NEXT):
+                                page.wait_for_timeout(2000)
+                            continue
+                        # Chen token khong duoc (hoac khong tich duoc o
+                        # Enterprise) -> tool TU BAM vao o checkbox thay
+                        # vi de user bam tay (user 2026-11-13 00:05).
+                        _emit(on_progress, step="captcha", detail="Giải tự động chưa được — tool tự bấm ô captcha…")
+                        if _click_recaptcha_checkbox(page):
+                            page.wait_for_timeout(3000)
                             if _click_enabled_button(page, BTN_NEXT):
                                 page.wait_for_timeout(2000)
                             continue
