@@ -3964,6 +3964,56 @@ _META_EDIT_TEXT = re.compile(r"Chỉnh sửa thông tin về Meta AI", re.I)
 _META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
 
 
+def _visible_email_input(page: Page):
+    """Tra o nhap email DANG HIEN. Trang co the co nhieu input cung
+    placeholder (an/hien theo man hinh) — cai dau tien co the bi an nen
+    chi kiem tra .first.is_visible() se cho mai du o that da hien. Tra
+    ve locator cua o dang hien dau tien, hoac None neu chua co."""
+    try:
+        inp = page.get_by_placeholder("Số di động hoặc email")
+    except Exception:
+        return None
+    try:
+        total = inp.count()
+    except Exception:
+        return None
+    for index in range(min(total, 8)):
+        el = inp.nth(index)
+        try:
+            if el.is_visible():
+                return el
+        except Exception:
+            continue
+    return None
+
+
+def _fill_email_input(page: Page, email: str) -> None:
+    """Dien email vao o dang hien + xac minh gia tri da vao o. Co trang
+    kieu controlled input "nuot" gia tri sau khi fill (con tro nhay
+    trong o nhung o van trong) nen neu gia tri khong vao thi go lai tung
+    ky tu; van khong vao thi bao loi ro thay vi chay tiep."""
+    email_el = _visible_email_input(page)
+    if email_el is None:
+        raise RuntimeError("Không thấy ô nhập email")
+    email_el.fill(email)
+    try:
+        _filled = email_el.input_value()
+    except Exception:
+        _filled = ""
+    if _filled == email:
+        return
+    # Fill khong vao — go lai tung ky tu.
+    try:
+        email_el.click()
+        email_el.press("ControlOrMeta+a")
+        email_el.press_sequentially(email, delay=20)
+        _filled = email_el.input_value()
+    except Exception:
+        _filled = ""
+    if _filled != email:
+        raise RuntimeError("Đã thấy ô nhập email nhưng không điền được mail vào (giá trị không vào ô)")
+
+
 def _meta_pick_div_option(page: Page, label_text: str, wanted: list[str]) -> bool:
     """Chon 1 muc trong dropdown dang div: bam vao o co nhan label_text
     (vd 'Ngày'), roi bam vao muc co text nam trong wanted. Tra True neu
@@ -4122,12 +4172,11 @@ def create_meta_account(
             # - dung o trang chu meta.ai (co nut Dang nhap).
             # Bam nut Dang nhap NGAY khi thay (khong cho het vong lap)
             # roi cho 1 trong 2 man xuat hien.
-            email_first = False
+            email_el = None
             clicked_login = False
             for _ in range(12):
-                inp = page.get_by_placeholder("Số di động hoặc email")
-                if inp.count() > 0 and inp.first.is_visible():
-                    email_first = True
+                email_el = _visible_email_input(page)
+                if email_el is not None:
                     break
                 if _text_visible(page, _META_AUTH_TEXT):
                     break
@@ -4142,37 +4191,46 @@ def create_meta_account(
                     except Exception:
                         pass
                 page.wait_for_timeout(2500)
-            if not email_first:
+            if email_el is None:
                 if not _text_visible(page, _META_AUTH_TEXT):
                     raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
                 _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
-                # Bam nut email roi cho man nhap email hien. Neu man chon
-                # van con (click khong chuyen trang — nut la link/div long
-                # nhau) thi bam lai, toi da 3 lan.
-                email_shown = False
+                # Bam nut email roi cho man nhap email hien. Chi bam lai
+                # khi URL khong doi + man chon van hien (click khong chuyen
+                # trang); neu URL doi roi thi chi cho o nhap hien, khong
+                # bam lai de khoi khoi dong lai chuyen trang dang chay.
                 for _attempt in range(3):
+                    try:
+                        _url_before = page.url or ""
+                    except Exception:
+                        _url_before = ""
                     _click_enabled_button(page, _META_EMAIL_TEXT, reverse_text=True)
                     for _tick in range(12):
-                        inp = page.get_by_placeholder("Số di động hoặc email")
-                        if inp.count() > 0 and inp.first.is_visible():
-                            email_shown = True
+                        email_el = _visible_email_input(page)
+                        if email_el is not None:
                             break
-                        if _tick >= 3 and _text_visible(page, _META_AUTH_TEXT):
+                        try:
+                            _url_now = page.url or ""
+                        except Exception:
+                            _url_now = ""
+                        if _tick >= 3 and _text_visible(page, _META_AUTH_TEXT) and _url_now == _url_before:
                             break
                         page.wait_for_timeout(2500)
-                    if email_shown:
+                    if email_el is not None:
                         break
-                    if not _text_visible(page, _META_AUTH_TEXT):
-                        # Man chon da bien mat (dang chuyen trang) nhung o
-                        # nhap chua hien — cho them 20s thay vi bam lai.
+                    try:
+                        _url_now = page.url or ""
+                    except Exception:
+                        _url_now = ""
+                    if _url_now != _url_before:
+                        # Da chuyen trang: cho them 20s cho o nhap hien.
                         for _ in range(8):
-                            inp = page.get_by_placeholder("Số di động hoặc email")
-                            if inp.count() > 0 and inp.first.is_visible():
-                                email_shown = True
+                            email_el = _visible_email_input(page)
+                            if email_el is not None:
                                 break
                             page.wait_for_timeout(2500)
                         break
-                if not email_shown:
+                if email_el is None:
                     try:
                         _url = page.url or ""
                     except Exception:
@@ -4182,9 +4240,8 @@ def create_meta_account(
                         "Bấm 'Dùng email hoặc số di động' xong nhưng không thấy ô nhập email"
                         f" (trang: {_url or 'không rõ'}; màn chọn còn hiện: {'có' if _chooser else 'không'})"
                     )
-            inp = page.get_by_placeholder("Số di động hoặc email")
-            inp.wait_for(state="visible", timeout=15000)
-            inp.fill(email)
+            # Dien mail vao o dang hien (co kiem tra gia tri da vao o).
+            _fill_email_input(page, email)
             _emit(on_progress, step="email", detail=f"Đã nhập {email} — chờ Meta tạo TK…")
             if not _click_enabled_button(page, BTN_NEXT):
                 raise RuntimeError("Không bấm được Tiếp tục sau khi nhập email")
