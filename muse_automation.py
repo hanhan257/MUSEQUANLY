@@ -3966,6 +3966,7 @@ _META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
 
 _META_COOKIE_TEXT = re.compile(r"Cho phép tất cả cookie|Allow all cookies", re.I)
 _META_EMAIL_HEADING = re.compile(r"Số di động hoặc email của bạn là gì|What is your mobile number or email", re.I)
+_META_CREATE_NEW_TEXT = re.compile(r"^Tạo tài khoản mới$|^Create a new account$", re.I)
 
 
 def _dismiss_meta_cookie_banner(page: Page) -> bool:
@@ -4089,7 +4090,17 @@ def _meta_pick_div_option(page: Page, label_text: str, wanted: list[str]) -> boo
         }""",
         wanted,
     )
-    return bool(picked)
+    if not picked:
+        return False
+    # Dropdown dang div cua Meta KHONG tu dong sau khi chon (anh user
+    # 2026-11-12 22:45: dropdown Thang van mo, che nut Tiep tuc) — bam
+    # Escape de dong no, khong thi nut Tiep tuc bi che khong bam duoc.
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
+    return True
 
 
 def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> None:
@@ -4121,6 +4132,12 @@ def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> Non
     for label_text, cands in zip(labels, cand_lists):
         if not _meta_pick_div_option(page, label_text, [str(c) for c in cands]):
             raise RuntimeError(f"Không chọn được {label_text} sinh (không thấy dropdown)")
+    # An toan: dong bat ky dropdown nao con mo truoc khi bam Tiep tuc.
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
 
 
 def create_meta_account(
@@ -4291,14 +4308,24 @@ def create_meta_account(
             _emit(on_progress, step="email", detail=f"Đã nhập {email} — chờ Meta tạo TK…")
             if not _click_enabled_button(page, BTN_NEXT):
                 raise RuntimeError("Không bấm được Tiếp tục sau khi nhập email")
-            # Cho man sinh nhat; giua duong co the hoi ma OTP gui ve mail.
+            # Cho man sinh nhat; giua duong co the hoi ma OTP gui ve mail,
+            # hoac man xac nhan "Tao tai khoan Meta moi?" (bam "Tao tai
+            # khoan moi" de tiep tuc).
             birthday_done = False
+            clicked_create_new = False
             for _ in range(30):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
                 if _text_visible(page, _META_START_TEXT):
                     birthday_done = True
                     break
+                if not clicked_create_new and _text_visible(page, _META_CREATE_NEW_TEXT):
+                    _emit(on_progress, step="email", detail="Xác nhận tạo tài khoản Meta mới…")
+                    if _click_enabled_button(page, _META_CREATE_NEW_TEXT):
+                        clicked_create_new = True
+                        page.wait_for_timeout(2000)
+                        continue
+                    clicked_create_new = True
                 if _text_visible(page, re.compile(r"captcha|Tôi không phải là người máy|robot", re.I)):
                     raise RuntimeError("Gặp captcha lúc tạo TK Meta — thử lại sau hoặc đổi IP")
                 otp = page.locator('input[autocomplete="one-time-code"]')
