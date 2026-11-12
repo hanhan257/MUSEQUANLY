@@ -989,6 +989,45 @@ def _click_recaptcha_checkbox(page: Page) -> bool:
     return False
 
 
+def _force_click_next(page: Page) -> bool:
+    """Bam nut Tiep tuc/Tiep theo bang JS ke ca khi no dang mo (disabled)
+    — dung sau khi chen token captcha: token da nam trong
+    g-recaptcha-response, server se kiem tra token khi gui di, khong can
+    doi nut sang. Go bo thuoc tinh disabled/aria-disabled roi goi
+    el.click() qua JS. Tra True neu bam duoc 1 nut."""
+    js = """(patterns) => {
+      const els = Array.from(document.querySelectorAll('button, a, [role="button"], div'));
+      for (const re of patterns) {
+        const rx = new RegExp(re, 'i');
+        const hit = els.filter(el => {
+          const t = (el.innerText || el.textContent || '').trim();
+          return rx.test(t);
+        });
+        for (const el of hit) {
+          try {
+            el.removeAttribute('disabled');
+            el.setAttribute('aria-disabled', 'false');
+            el.classList && el.classList.remove('disabled');
+            el.click();
+            return true;
+          } catch (e) {}
+        }
+      }
+      return false;
+    }"""
+    pats = [r"^Tiếp tục$", r"^Tiếp$", r"^Continue$", r"^Next$"]
+    try:
+        for frame in _frames(page):
+            try:
+                if frame.evaluate(js, pats):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
 def _drive_until_selfie(page: Page, on_progress: ProgressCallback | None) -> str | None:
     """Đi tiếp màn xác minh người thật tới lúc up ảnh.
 
@@ -4698,8 +4737,12 @@ def create_meta_account(
                         if ok:
                             _emit(on_progress, step="captcha", detail=f"Đã giải tự động bằng {note} — bấm Tiếp tục…")
                             page.wait_for_timeout(1500)
-                            if _click_enabled_button(page, BTN_NEXT):
-                                page.wait_for_timeout(2000)
+                            # Nut co the van mo vi callback Enterprise
+                            # chua kich hoat — mo khoa roi bam luon (token
+                            # da chen, server tu kiem tra khi gui).
+                            if not _click_enabled_button(page, BTN_NEXT):
+                                _force_click_next(page)
+                            page.wait_for_timeout(2000)
                             continue
                         # Chen token khong duoc (hoac khong tich duoc o
                         # Enterprise) -> tool TU BAM vao o checkbox thay

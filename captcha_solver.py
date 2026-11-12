@@ -295,6 +295,10 @@ _INJECT_JS = """(token) => {
   document.querySelectorAll('textarea[name="g-recaptcha-response"], #g-recaptcha-response').forEach(el => {
     el.value = token;
     n++;
+    // Bao cho JS cua trang biet gia tri da doi (React/Enterprise co
+    // the chi nhan khi co su kien input/change).
+    try { el.dispatchEvent(new Event('input', {bubbles: true})); } catch (e) {}
+    try { el.dispatchEvent(new Event('change', {bubbles: true})); } catch (e) {}
   });
   try {
     const cfg = window.___grecaptcha_cfg;
