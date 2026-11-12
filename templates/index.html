@@ -577,21 +577,15 @@
         </div>
         <div class="panel" style="margin-bottom:1rem;">
           <h3>Tạo tài khoản Muse</h3>
-          <div class="meta">Một nút làm cả hai bước: tạo tài khoản Meta bằng mail temp (sinh nhật đủ 18 tuổi, mật khẩu cố định Congphu21@, tên người dùng do Meta tự sinh) rồi đăng nhập muse.ai bằng tài khoản Meta vừa tạo qua proxy US. Tài khoản Meta tạo xong tự lưu vào kho bên dưới; đăng nhập Muse xong lưu cookie vào Quản lý tài khoản.</div>
+          <div class="meta">Một nút làm cả hai bước, dùng chung 1 proxy US ngay từ đầu: tạo tài khoản Meta bằng mail temp qua proxy US (sinh nhật đủ 18 tuổi, mật khẩu cố định Congphu21@, tên người dùng do Meta tự sinh) rồi đăng nhập muse.ai bằng tài khoản Meta vừa tạo qua cùng proxy US đó. Tài khoản Meta tạo xong tự lưu vào kho bên dưới; đăng nhập Muse xong lưu cookie vào Quản lý tài khoản.</div>
           <div class="toolbar" style="margin-bottom:0.75rem;">
-            <textarea id="metaCreateProxies" placeholder="Proxy tạo TK Meta, mỗi dòng một proxy (để trống = dùng IP máy)" style="flex:1;min-height:4.5rem;"></textarea>
-          </div>
-          <div class="toolbar" style="margin-bottom:0.75rem;">
-            <textarea id="metaMuseProxies" placeholder="Proxy US đăng nhập Muse, mỗi dòng một proxy (để trống = dùng Kho proxy)" style="flex:1;min-height:4.5rem;"></textarea>
+            <textarea id="metaMuseProxies" placeholder="Proxy US, mỗi dòng một proxy (để trống = dùng Kho proxy)" style="flex:1;min-height:4.5rem;"></textarea>
           </div>
           <div class="toolbar" style="margin-bottom:0.75rem;">
             <label class="check-inline">Số TK
               <input type="number" id="metaCount" value="50" min="1" max="1000" style="width:4.5rem;" />
             </label>
-            <label class="check-inline">TK / proxy Meta
-              <input type="number" id="metaCreatePerProxy" value="5" min="1" max="50" style="width:4rem;" />
-            </label>
-            <label class="check-inline">TK / proxy Muse
+            <label class="check-inline">TK / proxy
               <input type="number" id="metaMusePerProxy" value="5" min="1" max="50" style="width:4rem;" />
             </label>
             <label class="check-inline">Loại mail temp
@@ -2127,16 +2121,14 @@
       const mailProvider = document.getElementById('metaMailProvider').value || 'tempmail';
       const browser = document.getElementById('metaBrowser').value || 'auto';
       const maxWorkers = Math.max(1, Math.min(20, parseInt(document.getElementById('metaMaxWorkers').value || '5', 10) || 5));
-      const metaProxies = document.getElementById('metaCreateProxies').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const metaPerProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('metaCreatePerProxy').value || '5', 10) || 5));
       const museProxies = document.getElementById('metaMuseProxies').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const musePerProxy = Math.max(1, Math.min(50, parseInt(document.getElementById('metaMusePerProxy').value || '5', 10) || 5));
       if (loginPollTimer) clearInterval(loginPollTimer);
-      setMetaCreateStatus(`Tạo ${count} tài khoản Muse (Meta + đăng nhập)${metaProxies.length ? ` · ${metaProxies.length} proxy Meta (${metaPerProxy} TK/proxy)` : ' · tạo Meta bằng IP máy'} · ${museProxies.length ? `${museProxies.length} proxy US` : 'proxy US từ Kho proxy'} · ${maxWorkers} luồng`, 'running');
+      setMetaCreateStatus(`Tạo ${count} tài khoản Muse (Meta + đăng nhập, proxy US ngay từ đầu) · ${museProxies.length ? `${museProxies.length} proxy US (${musePerProxy} TK/proxy)` : 'proxy US từ Kho proxy'} · ${maxWorkers} luồng`, 'running');
       const res = await fetch('/api/meta-muse/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count, mail_provider: mailProvider, browser, max_workers: maxWorkers, meta_proxies: metaProxies.join('\n'), meta_per_proxy: metaPerProxy, muse_proxies: museProxies.join('\n'), muse_per_proxy: musePerProxy }),
+        body: JSON.stringify({ count, mail_provider: mailProvider, browser, max_workers: maxWorkers, muse_proxies: museProxies.join('\n'), muse_per_proxy: musePerProxy }),
       });
       const data = await res.json();
       if (!data.ok) { setMetaCreateStatus(data.error || 'Không tạo được', 'error'); return; }

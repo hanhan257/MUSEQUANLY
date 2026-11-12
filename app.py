@@ -96,7 +96,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v144"
+APP_BUILD = "signup-v145"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2514,10 +2514,13 @@ def _run_meta_login_batch(job_id: str, count: int, proxies: list[str], per_proxy
     )
 
 
-def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int, meta_proxy: str, muse_proxy: str) -> None:
+def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int, muse_proxy: str) -> None:
     """Mot TK Muse tron ven: tao TK Meta (mail temp, sinh nhat 18+,
-    mat khau co dinh) roi dang nhap muse.ai bang TK Meta do qua proxy
-    US. TK Meta luon duoc luu vao kho (de thu lai buoc 2 neu can)."""
+    mat khau co dinh) roi dang nhap muse.ai bang TK Meta do. CA HAI
+    BUOC DUNG CHUNG 1 PROXY US ngay tu dau (theo user 2026-11-12
+    23:10 — mo trinh duyet la bo proxy US vao luon, khong tao Meta
+    bang IP may roi moi doi proxy US). TK Meta luon duoc luu vao kho
+    (de thu lai buoc 2 neu can)."""
     box = {"key": f"luồng {index}", "email": ""}
 
     def on_progress(p: LoginProgress) -> None:
@@ -2538,14 +2541,14 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
 
     with state_lock:
         state["running"].append(box["key"])
-    # Buoc 1: tao TK Meta.
+    # Buoc 1: tao TK Meta — dung luon proxy US (khong dung IP may).
     try:
         result = create_meta_account(
             mail_provider=mail_provider,
             browser_name=browser,
             account_password=ACCOUNT_PASSWORD,
             on_progress=on_progress,
-            proxy=meta_proxy or None,
+            proxy=muse_proxy or None,
         )
     except Exception as exc:
         result = LoginProgress(step="error", error=str(exc))
@@ -2600,16 +2603,15 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
     _meta_publish(job_id, total, state, state_lock, unit="TK Muse tạo được")
 
 
-def _run_meta_muse_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int, meta_proxies: list[str], meta_per_proxy: int, muse_proxies: list[str], muse_per_proxy: int, use_proxy_warehouse: bool) -> None:
-    """Tao TK Muse tron ven: moi TK = tao Meta (IP may hoac proxy tao
-    Meta) + dang nhap muse.ai qua proxy US. Bu lai den du so TK Muse."""
+def _run_meta_muse_batch(job_id: str, count: int, mail_provider: str, browser: str, max_workers: int, muse_proxies: list[str], muse_per_proxy: int, use_proxy_warehouse: bool) -> None:
+    """Tao TK Muse tron ven: moi TK = tao Meta + dang nhap muse.ai,
+    ca hai buoc dung chung 1 proxy US ngay tu dau. Bu lai den du so
+    TK Muse."""
     clear_stop()
     from mail_provider import normalize_provider
 
     mail_provider = normalize_provider(mail_provider)
     max_workers = max(1, min(MAX_WORKERS, int(max_workers or BATCH_PARALLEL)))
-    meta_proxies = [p for p in (meta_proxies or []) if p]
-    meta_per_proxy = max(1, min(50, int(meta_per_proxy or 5)))
     muse_proxies = [line.strip() for line in (muse_proxies or []) if line and line.strip()]
     if use_proxy_warehouse:
         pool_records = usable_proxies(muse_per_proxy)
@@ -2623,7 +2625,7 @@ def _run_meta_muse_batch(job_id: str, count: int, mail_provider: str, browser: s
         {
             "status": "running",
             "step": "batch",
-            "detail": f"Tạo {target} tài khoản Muse (Meta + đăng nhập)",
+            "detail": f"Tạo {target} tài khoản Muse (Meta + đăng nhập, proxy US ngay từ đầu)",
             "total": target,
             "done_count": 0,
             "ok_count": 0,
@@ -2640,10 +2642,9 @@ def _run_meta_muse_batch(job_id: str, count: int, mail_provider: str, browser: s
         deficit = target - state["ok"]
         n = min(deficit, max_workers)
         base = state["finished"]
-        round_meta = [meta_proxies[(base + k) // meta_per_proxy % len(meta_proxies)] if meta_proxies else "" for k in range(n)]
         round_muse = [muse_proxies[(base + k) // muse_per_proxy % len(muse_proxies)] for k in range(n)]
         with ThreadPoolExecutor(max_workers=n) as pool:
-            list(pool.map(lambda i: _meta_muse_one(job_id, target, state, state_lock, mail_provider, browser, i + 1, round_meta[i], round_muse[i]), range(n)))
+            list(pool.map(lambda i: _meta_muse_one(job_id, target, state, state_lock, mail_provider, browser, i + 1, round_muse[i]), range(n)))
     if state["ok"] >= target:
         _set_job(
             job_id,
@@ -2762,12 +2763,6 @@ def api_meta_muse_create():
     except (TypeError, ValueError):
         max_workers = BATCH_PARALLEL
     max_workers = max(1, min(MAX_WORKERS, max_workers))
-    meta_proxies = [normalize_proxy_line(line) for line in (body.get("meta_proxies") or "").splitlines() if normalize_proxy_line(line)]
-    try:
-        meta_per_proxy = int(body.get("meta_per_proxy") or 5)
-    except (TypeError, ValueError):
-        meta_per_proxy = 5
-    meta_per_proxy = max(1, min(50, meta_per_proxy))
     muse_proxies = [normalize_proxy_line(line) for line in (body.get("muse_proxies") or "").splitlines() if normalize_proxy_line(line)]
     use_proxy_warehouse = not muse_proxies
     try:
@@ -2779,7 +2774,7 @@ def api_meta_muse_create():
         return jsonify({"ok": False, "error": f"Nhập số tài khoản từ 1 đến {SIGNUP_MAX}."}), 400
     job_id = uuid.uuid4().hex[:12]
     _set_job(job_id, {"status": "running", "step": "batch", "detail": f"Tạo {count} tài khoản Muse (Meta + đăng nhập)", "total": count})
-    thread = threading.Thread(target=_run_meta_muse_batch, args=(job_id, count, mail_provider, browser, max_workers, meta_proxies, meta_per_proxy, muse_proxies, muse_per_proxy, use_proxy_warehouse), daemon=True)
+    thread = threading.Thread(target=_run_meta_muse_batch, args=(job_id, count, mail_provider, browser, max_workers, muse_proxies, muse_per_proxy, use_proxy_warehouse), daemon=True)
     thread.start()
     return jsonify({"ok": True, "job_id": job_id, "count": count, "max_workers": max_workers})
 
