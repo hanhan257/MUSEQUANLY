@@ -4451,9 +4451,33 @@ def create_meta_account(
             confirmed = False
             finish_clicked = False
             username = ""
+            quest_reloaded = False
             for _ in range(40):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
+                # Trang Meta Quest (auth.meta.com/language, trang
+                # trang) co the hien ngay sau khi bam "Tao tai khoan"
+                # hoac "Toi dong y" — load lai 1 lan de ra man xac
+                # nhan nguoi that (user 2026-11-12 23:49).
+                try:
+                    _u = page.url or ""
+                except Exception:
+                    _u = ""
+                if "auth.meta.com/language" in _u and not quest_reloaded:
+                    quest_reloaded = True
+                    _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=60000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(3000)
+                    continue
+                # Man xac nhan nguoi that co the hien ngay tai day
+                # (sau khi load lai trang Meta Quest) — chuyen sang
+                # vong xac minh (captcha) o duoi.
+                if _text_visible(page, HUMAN_GATE):
+                    confirmed = True
+                    break
                 # Man xac nhan ten nguoi dung -> xong vong lap.
                 if _text_visible(page, _META_EDIT_TEXT):
                     confirmed = True
@@ -4555,10 +4579,12 @@ def create_meta_account(
                 page.wait_for_timeout(5000)
             if not confirmed:
                 raise RuntimeError("Nhập email xong nhưng không tới được màn xác nhận tên")
-            if not finish_clicked:
+            if not finish_clicked and _text_visible(page, _META_EDIT_TEXT):
                 # Luong cu: man xac nhan ten nguoi dung — doc ten tu
                 # sinh roi bam "Xac nhan". Luong moi (man tom tat) da
-                # bam "Tao tai khoan" trong vong lap nen bo qua.
+                # bam "Tao tai khoan" trong vong lap nen bo qua. Neu
+                # vong lap thoat o man xac nhan nguoi that (HUMAN_GATE)
+                # thi cung bo qua, vong xac minh duoi se xu ly.
                 try:
                     # Ten nguoi dung Meta tu sinh nam trong o input gan nhan
                     # "Tên người dùng" — doc gia tri neu tim thay.
