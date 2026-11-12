@@ -4104,10 +4104,14 @@ def create_meta_account(
             except Exception:
                 pass
             page.wait_for_timeout(2000)
-            # Trang dang nhap Meta (auth.meta.com). Meta co the dua thang
-            # sang man nhap email (khong qua man chon cach dang nhap) —
-            # cho 1 trong 2 man xuat hien roi moi xu ly.
+            # Trang dang nhap Meta (auth.meta.com). Co 3 truong hop:
+            # - Meta dua thang sang man nhap email (khong qua man chon);
+            # - hien man chon cach dang nhap truoc;
+            # - dung o trang chu meta.ai (co nut Dang nhap).
+            # Bam nut Dang nhap NGAY khi thay (khong cho het vong lap)
+            # roi cho 1 trong 2 man xuat hien.
             email_first = False
+            clicked_login = False
             for _ in range(12):
                 inp = page.get_by_placeholder("Số di động hoặc email")
                 if inp.count() > 0 and inp.first.is_visible():
@@ -4115,18 +4119,18 @@ def create_meta_account(
                     break
                 if _text_visible(page, _META_AUTH_TEXT):
                     break
-                page.wait_for_timeout(2500)
-            if not email_first:
-                # Chua o man nhap email: neu meta.ai chua chuyen sang
-                # auth.meta.com thi bam nut Dang nhap truoc.
-                if not _text_visible(page, _META_AUTH_TEXT):
+                if not clicked_login:
                     try:
                         btn = page.get_by_role("button", name=re.compile(r"Đăng nhập|Log in", re.I)).first
                         if btn.count() > 0 and btn.is_visible():
                             btn.click()
+                            clicked_login = True
                             page.wait_for_timeout(2000)
+                            continue
                     except Exception:
                         pass
+                page.wait_for_timeout(2500)
+            if not email_first:
                 if not _text_visible(page, _META_AUTH_TEXT):
                     raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
                 _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
