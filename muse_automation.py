@@ -4037,6 +4037,11 @@ _META_BIRTHDAY_TEXT = re.compile(r"Ngày sinh của bạn là khi nào|When.s yo
 _META_SAVE_LOGIN_TEXT = re.compile(r"Lưu thông tin đăng nhập|Save your login info", re.I)
 _META_FINISH_TEXT = re.compile(r"Hoàn tất quá trình tạo tài khoản Meta|Complete.*Meta account", re.I)
 _META_MARKETING_TEXT = re.compile(r"Tôi muốn nhận email về các đợt giảm giá", re.I)
+# Man "Dong y voi dieu khoan va chinh sach cua chung toi" (co the
+# xuat hien them truoc buoc xac nhan tai khoan — user 2026-11-12
+# 23:35): bat cong tac Email quang cao (cung lua chon nhan email
+# khuyen mai) roi bam "Toi dong y".
+_META_TERMS_TEXT = re.compile(r"Đồng ý với điều khoản và chính sách|Agree to our terms", re.I)
 
 
 def _dismiss_meta_cookie_banner(page: Page) -> bool:
@@ -4219,6 +4224,35 @@ def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> Non
         raise RuntimeError("Không chọn được Năm sinh (không thấy dropdown)")
     # An toan: dong bat ky dropdown nao con mo truoc khi bam Tiep tuc.
     _dismiss_open_dropdown(page)
+
+
+def _meta_accept_terms(page) -> bool:
+    """Man "Dong y voi dieu khoan va chinh sach": bat cong tac Email
+    quang cao (cung lua chon nhan email khuyen mai da tich o man tom
+    tat) roi bam "Toi dong y". Tra True neu da bam, False neu khong
+    thay man dieu khoan. Khong bao gio raise."""
+    try:
+        if not _text_visible(page, _META_TERMS_TEXT):
+            return False
+    except Exception:
+        return False
+    # Bat cong tac Email quang cao (best-effort).
+    try:
+        sw = page.get_by_role("switch").first
+        if sw.count() > 0 and sw.is_visible():
+            checked = (sw.get_attribute("aria-checked") or "").strip().lower()
+            if checked != "true":
+                sw.click(timeout=5000)
+                page.wait_for_timeout(500)
+    except Exception:
+        pass
+    try:
+        if _click_enabled_button(page, re.compile(r"^Tôi đồng ý$|^I agree$", re.I)) or _click_button_js(page, re.compile(r"^Tôi đồng ý$|^I agree$", re.I)):
+            page.wait_for_timeout(2000)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def create_meta_account(
@@ -4482,6 +4516,12 @@ def create_meta_account(
                     finish_clicked = True
                     confirmed = True
                     break
+                # Man dieu khoan (co the xuat hien them): bam "Toi dong y".
+                if _text_visible(page, _META_TERMS_TEXT):
+                    _emit(on_progress, step="terms", detail="Đồng ý với điều khoản…")
+                    _meta_accept_terms(page)
+                    page.wait_for_timeout(2000)
+                    continue
                 # Man xac nhan tao TK moi.
                 if not clicked_create_new and _text_visible(page, _META_CREATE_NEW_TEXT):
                     _emit(on_progress, step="email", detail="Xác nhận tạo tài khoản Meta mới…")
@@ -4553,9 +4593,24 @@ def create_meta_account(
                 if "meta.ai" in url and "auth.meta.com" not in url:
                     success = True
                     break
+                # Trang Meta Quest (auth.meta.com/language) sau khi tao
+                # xong TK Meta — coi nhu tao xong, mo Muse luon
+                # (user 2026-11-12 23:35: "ra dc meta quest thi mo
+                # muse ai di").
+                if "auth.meta.com/language" in url:
+                    success = True
+                    break
                 if _text_visible(page, re.compile(r"Chào mừng|Welcome to Meta AI", re.I)):
                     success = True
                     break
+                # Man dieu khoan (co the xuat hien them sau khi bam Tao
+                # tai khoan): bam "Toi dong y" roi moi toi buoc xac
+                # nhan tai khoan (user 2026-11-12 23:35).
+                if _text_visible(page, _META_TERMS_TEXT):
+                    _emit(on_progress, step="terms", detail="Đồng ý với điều khoản…")
+                    _meta_accept_terms(page)
+                    page.wait_for_timeout(2000)
+                    continue
                 otp = page.locator('input[autocomplete="one-time-code"]')
                 if otp.count() > 0 and otp.first.is_visible():
                     _emit(on_progress, step="wait_code", detail=f"Chờ mã trong {_mail_label}…")
