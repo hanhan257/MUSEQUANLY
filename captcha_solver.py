@@ -97,10 +97,18 @@ def extract_sitekey(page: Page) -> dict | None:
         const a = el.getAttribute('data-action');
         if (a) keys.push('__action__:' + a);
       });
+      // Ca iframe long ben trong frame nay (vd: Google recaptcha nam
+      // trong iframe referer_frame.php cua Meta) — lay src de tim k=.
+      document.querySelectorAll('iframe').forEach(el => {
+        const s = el.getAttribute('src') || '';
+        if (s) keys.push('__iframe__:' + s);
+      });
       for (const s of document.querySelectorAll('script')) {
         const t = s.textContent || '';
-        const m = t.match(/['"]sitekey['"]\\s*:\\s*['"]([^'"]+)['"]/);
+        const m = t.match(/['"]sitekey['"]\\s*[:=]\\s*['"]([^'"]+)['"]/);
         if (m) keys.push(m[1]);
+        const m2 = t.match(/enterprise\\.render\\([^,]+,\\s*\\{[^}]*sitekey\\s*[:=]\\s*['"]([^'"]+)['"]/);
+        if (m2) keys.push(m2[1]);
       }
       return keys;
     }"""
@@ -129,6 +137,22 @@ def extract_sitekey(page: Page) -> dict | None:
         for item in found or []:
             if isinstance(item, str) and item.startswith("__action__:"):
                 action = action or item[len("__action__:"):]
+            elif isinstance(item, str) and item.startswith("__iframe__:"):
+                # Iframe long ben trong (vd: anchor cua Google nam trong
+                # referer_frame.php cua Meta) — lay k= tu src cua no.
+                src = item[len("__iframe__:"):]
+                low2 = src.lower()
+                if "recaptcha" in low2:
+                    if "enterprise" in low2:
+                        enterprise = True
+                    try:
+                        qs2 = urllib.parse.parse_qs(urllib.parse.urlparse(src).query)
+                        if qs2.get("k") and qs2["k"][0]:
+                            sitekey = sitekey or qs2["k"][0]
+                        if qs2.get("action") and qs2["action"][0]:
+                            action = action or qs2["action"][0]
+                    except Exception:
+                        pass
             elif isinstance(item, str) and item:
                 sitekey = sitekey or item
         if sitekey:
