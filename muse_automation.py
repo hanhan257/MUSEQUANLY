@@ -4451,20 +4451,18 @@ def create_meta_account(
             confirmed = False
             finish_clicked = False
             username = ""
-            quest_reloaded = False
             for _ in range(40):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
                 # Trang Meta Quest (auth.meta.com/language, trang
-                # trang) co the hien ngay sau khi bam "Tao tai khoan"
-                # hoac "Toi dong y" — load lai 1 lan de ra man xac
-                # nhan nguoi that (user 2026-11-12 23:49).
+                # trang) — cu load lai cho toi khi hien man xac nhan
+                # nguoi that (user 2026-11-12 23:52). Khong gioi han
+                # 1 lan; vong lap 40 lan gioi han tong so lan load.
                 try:
                     _u = page.url or ""
                 except Exception:
                     _u = ""
-                if "auth.meta.com/language" in _u and not quest_reloaded:
-                    quest_reloaded = True
+                if "auth.meta.com/language" in _u:
                     _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
                     try:
                         page.reload(wait_until="domcontentloaded", timeout=60000)
@@ -4612,7 +4610,6 @@ def create_meta_account(
             success = False
             tried_auto = False
             manual_deadline = 0.0
-            reloaded_quest = False
             for _ in range(48):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
@@ -4621,11 +4618,11 @@ def create_meta_account(
                     success = True
                     break
                 # Trang Meta Quest (auth.meta.com/language, trang trang)
-                # KHONG phai la tao xong — load lai trang 1 lan se ra
+                # KHONG phai la tao xong — cu load lai cho toi khi hien
                 # man "Xac nhan ban la nguoi that" (user 2026-11-12
-                # 23:49). Chi load lai 1 lan, khong lap vo han.
-                if "auth.meta.com/language" in url and not reloaded_quest:
-                    reloaded_quest = True
+                # 23:52). Khong gioi han 1 lan; vong lap 48 lan gioi
+                # han tong so lan load.
+                if "auth.meta.com/language" in url:
                     _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
                     try:
                         page.reload(wait_until="domcontentloaded", timeout=60000)
