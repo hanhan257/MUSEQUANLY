@@ -3964,26 +3964,66 @@ _META_EDIT_TEXT = re.compile(r"Chỉnh sửa thông tin về Meta AI", re.I)
 _META_EMAIL_TEXT = re.compile(r"Dùng email hoặc số di động", re.I)
 
 
+_META_COOKIE_TEXT = re.compile(r"Cho phép tất cả cookie|Allow all cookies", re.I)
+_META_EMAIL_HEADING = re.compile(r"Số di động hoặc email của bạn là gì|What is your mobile number or email", re.I)
+
+
+def _dismiss_meta_cookie_banner(page: Page) -> bool:
+    """Tat bang dong y cookie cua Meta ('Cho phép tất cả cookie') neu co.
+    Bang nay hien tren profile moi va che man chon dang nhap — khong tat
+    thi khong bam duoc nut email. Khong bao gio raise."""
+    try:
+        btn = page.get_by_role("button", name=_META_COOKIE_TEXT).first
+        if btn.count() > 0 and btn.is_visible():
+            btn.click()
+            page.wait_for_timeout(1500)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _visible_email_input(page: Page):
-    """Tra o nhap email DANG HIEN. Trang co the co nhieu input cung
-    placeholder (an/hien theo man hinh) — cai dau tien co the bi an nen
-    chi kiem tra .first.is_visible() se cho mai du o that da hien. Tra
-    ve locator cua o dang hien dau tien, hoac None neu chua co."""
-    try:
-        inp = page.get_by_placeholder("Số di động hoặc email")
-    except Exception:
-        return None
-    try:
-        total = inp.count()
-    except Exception:
-        return None
-    for index in range(min(total, 8)):
-        el = inp.nth(index)
+    """Tra o nhap email DANG HIEN. O that cua auth.meta.com KHONG co
+    placeholder (nhan 'Số di động hoặc email' la <label> noi, kieu
+    floating label) nen tim bang label TRUOC; placeholder chi la du phong
+    (trang gia / bien the). Trang co the co nhieu input cung nhan nen
+    duyet tat ca de tim cai đang hiện. Tra ve locator cua o dang hien
+    dau tien, hoac None neu chua co."""
+    label_pat = re.compile(r"Số di động hoặc email|Mobile number or email", re.I)
+    for locator in (
+        page.get_by_label(label_pat),
+        page.get_by_placeholder("Số di động hoặc email"),
+        page.get_by_placeholder("Mobile number or email"),
+    ):
         try:
-            if el.is_visible():
-                return el
+            total = locator.count()
         except Exception:
             continue
+        for index in range(min(total, 8)):
+            el = locator.nth(index)
+            try:
+                if el.is_visible():
+                    return el
+            except Exception:
+                continue
+    # Du phong cuoi: man nhap email cua Meta chi co 1 o text va khong co
+    # placeholder; neu dang o dung man do ma label khong gan duoc thi lay
+    # o text dang hien duy nhat (chi dung khi tieu de man email dang hien
+    # de khoi nham o tim kiem o trang chu meta.ai).
+    try:
+        if _text_visible(page, _META_EMAIL_HEADING):
+            inp = page.locator('input[type="text"]')
+            total = inp.count()
+            for index in range(min(total, 8)):
+                el = inp.nth(index)
+                try:
+                    if el.is_visible():
+                        return el
+                except Exception:
+                    continue
+    except Exception:
+        pass
     return None
 
 
@@ -4166,6 +4206,9 @@ def create_meta_account(
             except Exception:
                 pass
             page.wait_for_timeout(2000)
+            # Tat bang dong y cookie neu co (profile moi hien bang nay va
+            # che man chon dang nhap, khong tat thi khong bam duoc nut email).
+            _dismiss_meta_cookie_banner(page)
             # Trang dang nhap Meta (auth.meta.com). Co 3 truong hop:
             # - Meta dua thang sang man nhap email (khong qua man chon);
             # - hien man chon cach dang nhap truoc;
@@ -4195,6 +4238,9 @@ def create_meta_account(
                 if not _text_visible(page, _META_AUTH_TEXT):
                     raise RuntimeError("Không vào được trang đăng nhập Meta (meta.ai / auth.meta.com)")
                 _emit(on_progress, step="email", detail="Chọn đăng nhập bằng email…")
+                # Bang cookie co the hien sau khi chuyen sang auth.meta.com
+                # — tat truoc khi bam nut email.
+                _dismiss_meta_cookie_banner(page)
                 # Bam nut email roi cho man nhap email hien. Chi bam lai
                 # khi URL khong doi + man chon van hien (click khong chuyen
                 # trang); neu URL doi roi thi chi cho o nhap hien, khong
