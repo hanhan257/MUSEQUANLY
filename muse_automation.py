@@ -4055,6 +4055,25 @@ def _fill_email_input(page: Page, email: str) -> None:
         raise RuntimeError("Đã thấy ô nhập email nhưng không điền được mail vào (giá trị không vào ô)")
 
 
+def _dismiss_open_dropdown(page: Page) -> None:
+    """Dong dropdown dang mo (kieu div cua Meta): bam Escape, roi bam ra
+    ngoai (tieu de trang) de kich hoat dong dropdown khi click ben
+    ngoai. Escape mot minh khong du (user xac nhan v140 van bi che).
+    Khong bao gio raise."""
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+    except Exception:
+        pass
+    try:
+        heading = page.get_by_text("Bắt đầu trên Meta AI").first
+        if heading.count() > 0 and heading.is_visible():
+            heading.click(timeout=3000)
+            page.wait_for_timeout(300)
+    except Exception:
+        pass
+
+
 def _meta_pick_div_option(page: Page, label_text: str, wanted: list[str]) -> bool:
     """Chon 1 muc trong dropdown dang div: bam vao o co nhan label_text
     (vd 'Ngày'), roi bam vao muc co text nam trong wanted. Tra True neu
@@ -4093,13 +4112,9 @@ def _meta_pick_div_option(page: Page, label_text: str, wanted: list[str]) -> boo
     if not picked:
         return False
     # Dropdown dang div cua Meta KHONG tu dong sau khi chon (anh user
-    # 2026-11-12 22:45: dropdown Thang van mo, che nut Tiep tuc) — bam
-    # Escape de dong no, khong thi nut Tiep tuc bi che khong bam duoc.
-    try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(400)
-    except Exception:
-        pass
+    # 2026-11-12 22:45/22:50: dropdown Thang van mo, che nut Tiep tuc).
+    # Dong bang Escape + bam ra ngoai, khong thi nut Tiep tuc bi che.
+    _dismiss_open_dropdown(page)
     return True
 
 
@@ -4133,11 +4148,7 @@ def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> Non
         if not _meta_pick_div_option(page, label_text, [str(c) for c in cands]):
             raise RuntimeError(f"Không chọn được {label_text} sinh (không thấy dropdown)")
     # An toan: dong bat ky dropdown nao con mo truoc khi bam Tiep tuc.
-    try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(400)
-    except Exception:
-        pass
+    _dismiss_open_dropdown(page)
 
 
 def create_meta_account(
