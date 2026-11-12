@@ -4183,12 +4183,12 @@ def _meta_fill_birthday(page: Page, birthday: dict[str, list[str] | str]) -> Non
             if not done:
                 raise RuntimeError(f"Không chọn được {'Ngày' if idx == 0 else 'Tháng' if idx == 1 else 'Năm'} sinh")
         return
-    # Dropdown dang div (kieu facebook.com/r.php): bam JS nhu probe truoc day.
-    labels = ("Ngày", "Tháng", "Năm")
-    cand_lists = (day_cands, month_cands, year_cands)
-    for label_text, cands in zip(labels, cand_lists):
-        if not _meta_pick_div_option(page, label_text, [str(c) for c in cands]):
-            raise RuntimeError(f"Không chọn được {label_text} sinh (không thấy dropdown)")
+    # Dropdown dang div (kieu facebook.com/r.php): CHI doi Nam.
+    # Theo user 2026-11-12 22:58 — "chi thay doi nam thoi, ngay vs thang
+    # k can sua": Ngay/Thang de mac dinh la duoc, khong mo dropdown
+    # Thang de tranh no mo che nut Tiep tuc (anh image-127).
+    if not _meta_pick_div_option(page, "Năm", [str(c) for c in year_cands]):
+        raise RuntimeError("Không chọn được Năm sinh (không thấy dropdown)")
     # An toan: dong bat ky dropdown nao con mo truoc khi bam Tiep tuc.
     _dismiss_open_dropdown(page)
 
