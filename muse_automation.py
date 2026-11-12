@@ -965,12 +965,13 @@ def _try_auto_solve_captcha(page: Page) -> tuple[bool, str]:
 
 
 def _click_recaptcha_checkbox(page: Page) -> bool:
-    """Tu bam vao o checkbox 'Tôi không phải là người máy' trong iframe
-    anchor cua reCAPTCHA (user 2026-11-13 00:05: 'da lam tool con bam
-    tay' — tool phai tu bam, khong de user bam tay). Tra True neu bam
-    duoc. Neu Google hien luoi chon hinh sau khi bam thi buoc goi cho
-    user giai tay (hoac thu token sau)."""
-    js_click = """() => {
+    """Tu bam vao o checkbox 'Tôi không phải là người máy' (user
+    2026-11-13 00:05: 'da lam tool con bam tay' — tool phai tu bam).
+    Tim trong TAT CA frame, khong loc theo URL, vi o checkbox nam trong
+    iframe referer_frame.php cua Meta (link khong chua 'recaptcha' /
+    'anchor') nen loc URL bo qua mat no (user 2026-11-13 06:10: 'tool
+    kj bam'). Tra True neu bam duoc."""
+    js_find_click = """() => {
       const el = document.querySelector('#recaptcha-anchor')
         || document.querySelector('.recaptcha-checkbox')
         || document.querySelector('[role="checkbox"]');
@@ -982,13 +983,9 @@ def _click_recaptcha_checkbox(page: Page) -> bool:
     except Exception:
         return False
     for frame in frames:
-        url = (frame.url or "").lower()
-        if "recaptcha" not in url or "anchor" not in url:
-            continue
-        # Cach 1: chay JS ngay trong iframe anchor (cung nguon voi
-        # checkbox) — chac chan nhat.
+        # Cach 1: chay JS ngay trong frame do (cung nguon voi checkbox).
         try:
-            if frame.evaluate(js_click):
+            if frame.evaluate(js_find_click):
                 return True
         except Exception:
             pass
@@ -1001,20 +998,6 @@ def _click_recaptcha_checkbox(page: Page) -> bool:
                     return True
             except Exception:
                 continue
-    # Cach 3: dung frame_locator cua page (API khuyen dung cua
-    # Playwright cho iframe).
-    try:
-        fl = page.frame_locator('iframe[src*="recaptcha"][src*="anchor"]')
-        for sel in ("#recaptcha-anchor", ".recaptcha-checkbox", '[role="checkbox"]'):
-            try:
-                loc = fl.locator(sel)
-                if loc.count() > 0:
-                    loc.first.click(timeout=5000, force=True)
-                    return True
-            except Exception:
-                continue
-    except Exception:
-        pass
     return False
 
 
