@@ -4586,6 +4586,7 @@ def create_meta_account(
             success = False
             tried_auto = False
             manual_deadline = 0.0
+            reloaded_quest = False
             for _ in range(48):
                 if stop_requested():
                     raise RuntimeError("Đã dừng")
@@ -4593,13 +4594,19 @@ def create_meta_account(
                 if "meta.ai" in url and "auth.meta.com" not in url:
                     success = True
                     break
-                # Trang Meta Quest (auth.meta.com/language) sau khi tao
-                # xong TK Meta — coi nhu tao xong, mo Muse luon
-                # (user 2026-11-12 23:35: "ra dc meta quest thi mo
-                # muse ai di").
-                if "auth.meta.com/language" in url:
-                    success = True
-                    break
+                # Trang Meta Quest (auth.meta.com/language, trang trang)
+                # KHONG phai la tao xong — load lai trang 1 lan se ra
+                # man "Xac nhan ban la nguoi that" (user 2026-11-12
+                # 23:49). Chi load lai 1 lan, khong lap vo han.
+                if "auth.meta.com/language" in url and not reloaded_quest:
+                    reloaded_quest = True
+                    _emit(on_progress, step="verify", detail="Thấy trang Meta Quest — tải lại trang để ra màn xác nhận…")
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=60000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(3000)
+                    continue
                 if _text_visible(page, re.compile(r"Chào mừng|Welcome to Meta AI", re.I)):
                     success = True
                     break
