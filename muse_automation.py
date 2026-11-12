@@ -1127,6 +1127,10 @@ def _drive_until_selfie(page: Page, on_progress: ProgressCallback | None) -> str
         if _captcha_challenge_visible(page):
             if not solver_tried:
                 solver_tried = True
+                # Thu tu theo user (2026-11-13 06:05): bam o checkbox
+                # truoc roi moi gui qua dich vu giai.
+                _click_recaptcha_checkbox(page)
+                page.wait_for_timeout(2000)
                 _emit(
                     on_progress,
                     step="human_check",
@@ -4758,10 +4762,20 @@ def create_meta_account(
                         page.wait_for_timeout(2000)
                     continue
                 # reCAPTCHA (checkbox / luoi chon hinh).
+                # Thu tu theo user (2026-11-13 06:05): doi giao dien
+                # checkbox load xong -> BAM vao "Tôi không phải là
+                # người máy" truoc -> ROI MOI gui qua 2Captcha giai.
                 if _captcha_visible(page) or _text_visible(page, re.compile(r"Tôi không phải là người máy", re.I)):
                     if not tried_auto:
                         tried_auto = True
-                        _emit(on_progress, step="captcha", detail="Thấy reCAPTCHA — thử giải tự động bằng dịch vụ…")
+                        # 1. Doi giao dien checkbox load xong.
+                        page.wait_for_timeout(2000)
+                        # 2. Bam vao o checkbox truoc.
+                        _emit(on_progress, step="captcha", detail="Thấy reCAPTCHA — bấm ô 'Tôi không phải là người máy'…")
+                        _click_recaptcha_checkbox(page)
+                        page.wait_for_timeout(3000)
+                        # 3. Roi moi gui qua dich vu giai (2Captcha).
+                        _emit(on_progress, step="captcha", detail="Đã bấm checkbox — gửi qua 2Captcha để giải…")
                         ok, note = _try_auto_solve_captcha(page)
                         if ok:
                             _emit(on_progress, step="captcha", detail=f"Đã giải tự động bằng {note} — bấm Tiếp tục…")
@@ -4772,15 +4786,6 @@ def create_meta_account(
                             if not _click_enabled_button(page, BTN_NEXT):
                                 _force_click_next(page)
                             page.wait_for_timeout(2000)
-                            continue
-                        # Chen token khong duoc (hoac khong tich duoc o
-                        # Enterprise) -> tool TU BAM vao o checkbox thay
-                        # vi de user bam tay (user 2026-11-13 00:05).
-                        _emit(on_progress, step="captcha", detail="Giải tự động chưa được — tool tự bấm ô captcha…")
-                        if _click_recaptcha_checkbox(page):
-                            page.wait_for_timeout(3000)
-                            if _click_enabled_button(page, BTN_NEXT):
-                                page.wait_for_timeout(2000)
                             continue
                         _emit(
                             on_progress,
