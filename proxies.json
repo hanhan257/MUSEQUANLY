@@ -1,252 +1,1348 @@
 {
   "proxies": [
     {
-      "id": "px_6a18157c8d",
-      "proxy": "216.10.27.170:6848:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 6,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_10e407ad35",
-      "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 4,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_c724ae8551",
-      "proxy": "67.227.42.150:6127:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 4,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_f78363feaa",
-      "proxy": "184.174.58.120:5682:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 5,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_107e8ff5db",
-      "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 3,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_da8fe0e7df",
-      "proxy": "45.39.115.54:5465:pexmqfcj:y8d7o9w7j0uz",
+      "id": "px_9d7ac90de2",
+      "proxy": "72.1.183.31:5328:ycgqkzoostaticresidential:xk3yvgiz66w8",
       "uses": 0,
-      "status": "error",
-      "last_error": "Page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://muse.ai/\nCall log:\n  - navigating to \"https://muse.ai/\", waiting until \"domcontentloaded\". Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_715ae28dc1",
-      "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_1c1231dc61",
-      "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_4e704d80c2",
-      "proxy": "161.123.33.142:6165:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_eacddb608b",
-      "proxy": "217.117.166.23:5665:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:43:24Z"
-    },
-    {
-      "id": "px_618e2d5f37",
-      "proxy": "154.21.155.215:6658:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_7f13b4bdf5",
-      "proxy": "154.29.239.163:6202:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_b05d2c079c",
-      "proxy": "198.37.98.227:5757:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_1bdd3dfc11",
-      "proxy": "107.174.4.247:6216:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_5201fe3513",
-      "proxy": "104.168.25.220:5902:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_4a92579e53",
-      "proxy": "46.202.68.106:7851:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_b5bdb74b0b",
-      "proxy": "89.249.193.130:5868:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_c2a4981c47",
-      "proxy": "198.37.121.197:6617:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_31d2f60337",
-      "proxy": "154.21.97.109:5991:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-07T01:45:03Z"
-    },
-    {
-      "id": "px_f98bfa5207",
-      "proxy": "23.94.7.65:5752:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 2,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-07T01:45:03Z"
+      "created_at": "2026-11-12T06:39:40Z"
     },
     {
-      "id": "px_91aee0b22a",
-      "proxy": "67.227.36.215:6257:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 1,
+      "id": "px_9f2399b352",
+      "proxy": "130.180.232.184:8622:ycgqkzoostaticresidential:xk3yvgiz66w8",
+      "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-07T01:45:03Z"
+      "created_at": "2026-11-12T06:39:40Z"
     },
     {
-      "id": "px_b851b38f93",
+      "id": "px_b25f7d6ce5",
+      "proxy": "9.142.47.219:6388:ycgqkzoostaticresidential:xk3yvgiz66w8",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T06:39:40Z"
+    },
+    {
+      "id": "px_6c2fbfec25",
+      "proxy": "64.52.28.46:7733:ycgqkzoostaticresidential:xk3yvgiz66w8",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T06:39:40Z"
+    },
+    {
+      "id": "px_2bb556bbab",
+      "proxy": "64.52.30.123:6810:ycgqkzoostaticresidential:xk3yvgiz66w8",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T06:39:40Z"
+    },
+    {
+      "id": "px_4dec4db5ff",
+      "proxy": "p.webshare.io:80:dvlnmwwb-4:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_89a11a7bca",
+      "proxy": "p.webshare.io:80:dvlnmwwb-5:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_d19015a27c",
+      "proxy": "p.webshare.io:80:dvlnmwwb-6:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_66d86f360f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-7:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_8a36758fde",
+      "proxy": "p.webshare.io:80:dvlnmwwb-9:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_2165517a8b",
+      "proxy": "p.webshare.io:80:dvlnmwwb-11:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_344eaea49b",
+      "proxy": "p.webshare.io:80:dvlnmwwb-12:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_d226ef40f9",
+      "proxy": "p.webshare.io:80:dvlnmwwb-13:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_451855149b",
+      "proxy": "p.webshare.io:80:dvlnmwwb-15:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_f1911e5766",
+      "proxy": "p.webshare.io:80:dvlnmwwb-16:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_ad5255e3de",
+      "proxy": "p.webshare.io:80:dvlnmwwb-17:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_964c60ab8e",
+      "proxy": "p.webshare.io:80:dvlnmwwb-19:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_4168686047",
+      "proxy": "p.webshare.io:80:dvlnmwwb-8:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_d90b0b9f5b",
+      "proxy": "p.webshare.io:80:dvlnmwwb-20:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_3eeee0583f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-21:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_97ecada25f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-22:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_274ea5f9bf",
+      "proxy": "p.webshare.io:80:dvlnmwwb-23:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_44d492ee56",
+      "proxy": "p.webshare.io:80:dvlnmwwb-24:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_b724f93e3a",
+      "proxy": "p.webshare.io:80:dvlnmwwb-25:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_77e1275d0f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-26:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_8fd05f6017",
+      "proxy": "p.webshare.io:80:dvlnmwwb-27:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_11f2f14f53",
+      "proxy": "p.webshare.io:80:dvlnmwwb-28:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_2696e83a73",
+      "proxy": "p.webshare.io:80:dvlnmwwb-29:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_80020c6c6f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-30:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_17d0c0d432",
+      "proxy": "p.webshare.io:80:dvlnmwwb-31:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_d288fa11d3",
+      "proxy": "p.webshare.io:80:dvlnmwwb-32:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_f73fdbf72f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-33:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_7d5d01bec8",
+      "proxy": "p.webshare.io:80:dvlnmwwb-34:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_c30c21be81",
+      "proxy": "p.webshare.io:80:dvlnmwwb-35:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_604155beb4",
+      "proxy": "p.webshare.io:80:dvlnmwwb-36:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_53c0cbcd9e",
+      "proxy": "p.webshare.io:80:dvlnmwwb-37:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_b6e4b5ef45",
+      "proxy": "p.webshare.io:80:dvlnmwwb-38:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_dd2a1c7598",
+      "proxy": "p.webshare.io:80:dvlnmwwb-39:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_de5dc42a8d",
+      "proxy": "p.webshare.io:80:dvlnmwwb-40:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_3046895b42",
+      "proxy": "p.webshare.io:80:dvlnmwwb-41:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_59e3cfc3be",
+      "proxy": "p.webshare.io:80:dvlnmwwb-42:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_a3ea356bc8",
+      "proxy": "p.webshare.io:80:dvlnmwwb-43:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_24af0dff69",
+      "proxy": "p.webshare.io:80:dvlnmwwb-44:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_8d64b572c0",
+      "proxy": "p.webshare.io:80:dvlnmwwb-45:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_25277ceac8",
+      "proxy": "p.webshare.io:80:dvlnmwwb-46:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_17ef2f06fa",
+      "proxy": "p.webshare.io:80:dvlnmwwb-47:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_7c6f84f991",
+      "proxy": "p.webshare.io:80:dvlnmwwb-65:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_3a220e0444",
+      "proxy": "p.webshare.io:80:dvlnmwwb-66:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_0fd9dc1730",
+      "proxy": "p.webshare.io:80:dvlnmwwb-67:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_df9b389864",
+      "proxy": "p.webshare.io:80:dvlnmwwb-68:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_2a93a045aa",
+      "proxy": "p.webshare.io:80:dvlnmwwb-69:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_4b9f941c73",
+      "proxy": "p.webshare.io:80:dvlnmwwb-70:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_090b37702e",
+      "proxy": "p.webshare.io:80:dvlnmwwb-71:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_e1b6fba49b",
+      "proxy": "p.webshare.io:80:dvlnmwwb-72:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_186ea93bf4",
+      "proxy": "p.webshare.io:80:dvlnmwwb-73:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_1572e7e9c2",
+      "proxy": "p.webshare.io:80:dvlnmwwb-74:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_db3469345f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-75:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_1d0d29c158",
+      "proxy": "p.webshare.io:80:dvlnmwwb-76:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_06c877afae",
+      "proxy": "p.webshare.io:80:dvlnmwwb-77:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_6566bbede0",
+      "proxy": "p.webshare.io:80:dvlnmwwb-78:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_8ae0440e9e",
+      "proxy": "p.webshare.io:80:dvlnmwwb-79:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_c8ed99b535",
+      "proxy": "p.webshare.io:80:dvlnmwwb-80:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_136f3b4a19",
+      "proxy": "p.webshare.io:80:dvlnmwwb-81:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_39e622900d",
+      "proxy": "p.webshare.io:80:dvlnmwwb-82:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_49cda4d83a",
+      "proxy": "p.webshare.io:80:dvlnmwwb-83:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_018e4c9ada",
+      "proxy": "p.webshare.io:80:dvlnmwwb-84:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_65efb456cf",
+      "proxy": "p.webshare.io:80:dvlnmwwb-85:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_20bfe9a3e5",
+      "proxy": "p.webshare.io:80:dvlnmwwb-86:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_ea1964443f",
+      "proxy": "p.webshare.io:80:dvlnmwwb-87:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_2a78b51b6a",
+      "proxy": "p.webshare.io:80:dvlnmwwb-88:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_bf08e72eb5",
+      "proxy": "p.webshare.io:80:dvlnmwwb-89:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_45b627f5a8",
+      "proxy": "p.webshare.io:80:dvlnmwwb-90:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_e0bb14d661",
+      "proxy": "p.webshare.io:80:dvlnmwwb-91:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_4835bce2af",
+      "proxy": "p.webshare.io:80:dvlnmwwb-92:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_68ffe0458d",
+      "proxy": "p.webshare.io:80:dvlnmwwb-93:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_da83c0ddb1",
+      "proxy": "p.webshare.io:80:dvlnmwwb-95:7bo8tx8hb4kq",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:14:28Z"
+    },
+    {
+      "id": "px_11b5d7becf",
+      "proxy": "50.114.82.209:7193:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_5f498bf632",
+      "proxy": "23.27.203.236:6971:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_cc51e11c16",
+      "proxy": "50.114.15.48:6033:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_83f6f3b0ab",
       "proxy": "67.227.42.82:6059:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 1,
+      "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_a0805326ce",
+      "id": "px_75df9cfcce",
       "proxy": "142.111.104.143:6153:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
-      "status": "error",
-      "last_error": "Muse chặn tạo tài khoản mới (You can't create a new account right now). Không phải lỗi mail — thử proxy khác hoặc tạo 1 TK/lần.. Đã đóng Chrome",
-      "created_at": "2026-11-09T08:19:30Z"
-    },
-    {
-      "id": "px_6747b857ed",
-      "proxy": "184.174.24.213:6789:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 1,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_3edf4320c0",
+      "id": "px_178b5ed632",
+      "proxy": "184.174.24.213:6789:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_96ffa49ca8",
       "proxy": "208.70.9.190:7546:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_6140241f3e",
-      "proxy": "104.253.59.41:6464:pexmqfcj:y8d7o9w7j0uz",
-      "uses": 0,
-      "status": "ready",
-      "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
-    },
-    {
-      "id": "px_fd04f52e8f",
+      "id": "px_6a1a2fdf9b",
       "proxy": "184.174.30.97:5766:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_15693bc875",
+      "id": "px_b00ed8d722",
       "proxy": "198.23.147.213:5228:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_f24d08cc11",
+      "id": "px_7f6e792da3",
       "proxy": "38.154.191.15:8592:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_d167278dd8",
+      "id": "px_ade8d20290",
       "proxy": "198.46.241.123:6658:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
     },
     {
-      "id": "px_cc584bf048",
+      "id": "px_4cabc369a5",
       "proxy": "23.95.250.168:6441:pexmqfcj:y8d7o9w7j0uz",
       "uses": 0,
       "status": "ready",
       "last_error": "",
-      "created_at": "2026-11-09T08:19:30Z"
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_cab6957388",
+      "proxy": "173.214.177.217:5908:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_d5851b3045",
+      "proxy": "31.57.86.240:5622:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_842576df0e",
+      "proxy": "23.95.150.210:6179:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_a430dba13a",
+      "proxy": "191.96.130.93:5856:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_d7880fc4ec",
+      "proxy": "198.37.118.17:5476:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_888845455c",
+      "proxy": "104.164.254.8:6687:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_9bc41c097f",
+      "proxy": "191.101.26.31:5770:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_45b625fc26",
+      "proxy": "206.206.118.226:6464:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_47883f1152",
+      "proxy": "206.206.71.147:5787:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_4cbf6e745e",
+      "proxy": "166.88.155.69:6228:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_da12ef0a40",
+      "proxy": "166.88.217.189:6522:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_f27a037cdb",
+      "proxy": "198.37.121.116:6536:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_8c052dcf9c",
+      "proxy": "217.117.165.38:6180:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_5340fa12b0",
+      "proxy": "23.27.93.166:5745:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_104980d5c0",
+      "proxy": "152.232.5.25:8696:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_3bfa35a8ac",
+      "proxy": "31.58.20.205:5889:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_1d7bf726e7",
+      "proxy": "152.232.117.187:5187:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_13cc7a2b0d",
+      "proxy": "184.174.56.239:5251:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_d5380a59c4",
+      "proxy": "142.147.240.234:6756:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_3108e20fb1",
+      "proxy": "45.41.162.87:6724:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_f0187b07f7",
+      "proxy": "67.227.1.164:6445:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_2c21d5591f",
+      "proxy": "107.173.137.169:6423:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_01404f604d",
+      "proxy": "136.0.103.90:5791:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_3f6cbc6af0",
+      "proxy": "216.10.27.170:6848:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_f09791dc1c",
+      "proxy": "198.37.98.222:5752:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_3a3b5adbd8",
+      "proxy": "67.227.42.150:6127:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_4fc7a0aef4",
+      "proxy": "184.174.58.120:5682:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_c88b420e9f",
+      "proxy": "31.57.78.180:5564:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_7827391845",
+      "proxy": "179.61.245.198:6977:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_eed3956ac0",
+      "proxy": "154.12.133.168:6554:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_a6abe78f60",
+      "proxy": "161.123.33.142:6165:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_530b8f658a",
+      "proxy": "217.117.166.23:5665:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_9c28a1c0a0",
+      "proxy": "104.238.10.53:5999:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_5eb73f61aa",
+      "proxy": "107.172.156.65:5713:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_0be14fba0f",
+      "proxy": "166.88.58.190:5915:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_efd320deba",
+      "proxy": "50.114.98.184:5668:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_e6d6eb73fb",
+      "proxy": "38.154.206.242:9733:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_e6f1ae41ad",
+      "proxy": "173.214.176.245:6216:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_daa075b97e",
+      "proxy": "206.206.71.28:5668:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_83305dedfa",
+      "proxy": "38.154.203.39:5807:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_b87c1f3f1b",
+      "proxy": "188.215.5.230:5260:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_bcd29eda8f",
+      "proxy": "173.211.69.14:6607:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_5260deeed5",
+      "proxy": "213.169.228.175:7815:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_4631669303",
+      "proxy": "23.236.216.129:6159:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_e2902822a8",
+      "proxy": "92.113.7.191:6917:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_f2f8e26bb3",
+      "proxy": "142.147.242.93:6072:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_ab3089760f",
+      "proxy": "45.56.175.5:5679:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_a6a407d85d",
+      "proxy": "154.21.96.177:5803:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_84ccbbff07",
+      "proxy": "184.174.43.91:6631:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_2a5a9fa5cd",
+      "proxy": "45.115.195.23:6001:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_78a3a5d6f4",
+      "proxy": "152.232.14.48:7179:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_131b8cdd33",
+      "proxy": "107.173.150.39:6493:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_1436a8abe9",
+      "proxy": "209.127.191.50:5124:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_0e011b8433",
+      "proxy": "69.58.9.209:5705:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_7475fa074e",
+      "proxy": "104.239.105.129:6659:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_6e6695c1a8",
+      "proxy": "45.115.194.236:5932:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_7ac5f12c26",
+      "proxy": "23.27.208.113:5823:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_74436476cd",
+      "proxy": "107.175.208.233:6174:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_47d410a820",
+      "proxy": "152.232.100.70:9164:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_8c0ec387a5",
+      "proxy": "191.101.181.3:6756:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_13a539acd5",
+      "proxy": "154.6.129.220:5690:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_86b70ba0d3",
+      "proxy": "188.215.5.197:5227:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_a236b52c5a",
+      "proxy": "184.174.43.246:6786:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_6be6bc0bb2",
+      "proxy": "192.241.116.193:5963:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_6877fa8b23",
+      "proxy": "23.95.150.87:6056:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_2fcebf7cc5",
+      "proxy": "154.21.155.215:6658:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_0d98eb5156",
+      "proxy": "154.29.239.163:6202:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_7117f45ffa",
+      "proxy": "198.37.98.227:5757:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_447c1df197",
+      "proxy": "107.174.4.247:6216:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_a87590a1b5",
+      "proxy": "104.168.25.220:5902:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_753337af65",
+      "proxy": "46.202.68.106:7851:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_9d29e9b5b1",
+      "proxy": "89.249.193.130:5868:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_83e28c9d14",
+      "proxy": "198.37.121.197:6617:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_1add12f226",
+      "proxy": "154.21.97.109:5991:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_d00d572996",
+      "proxy": "23.94.7.65:5752:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_442230cd6d",
+      "proxy": "67.227.36.215:6257:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_ca7f88f865",
+      "proxy": "38.154.204.89:8130:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_399b909b25",
+      "proxy": "69.58.12.41:8046:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_6df84ac5c6",
+      "proxy": "136.0.188.59:6022:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
+    },
+    {
+      "id": "px_cdba1fa0a8",
+      "proxy": "152.232.81.249:8532:pexmqfcj:y8d7o9w7j0uz",
+      "uses": 0,
+      "status": "ready",
+      "last_error": "",
+      "created_at": "2026-11-12T08:26:03Z"
     }
   ]
 }
