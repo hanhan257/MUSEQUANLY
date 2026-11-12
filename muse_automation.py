@@ -4009,6 +4009,13 @@ def login_muse(
 # máy" (+ lưới chọn hình). create_meta_account xử lý bước này bằng dịch vụ
 # giải captcha tự động (v132, cần key) và chờ giải tay tối đa 3 phút.
 META_AI_URL = "https://www.meta.ai/"
+# Vao thang auth.meta.com thay vi meta.ai (user 2026-11-12 23:20):
+# nut "Dang nhap" o trang chu meta.ai bam tay thi duoc nhung tool bam
+# khong duoc (khi dung proxy US) — vao thang trang dang nhap se bo qua
+# luon buoc bam nut do. Link OIDC day du co waterfall_id/state/code_
+# challenge/rcs dung 1 lan nen khong dung nguyen link user gui; vao
+# https://auth.meta.com/ de Meta tao phien moi.
+META_AUTH_URL = "https://auth.meta.com/"
 _META_AUTH_TEXT = re.compile(r"Đăng nhập hoặc tạo tài khoản", re.I)
 _META_START_TEXT = re.compile(r"Bắt đầu trên Meta AI", re.I)
 _META_EDIT_TEXT = re.compile(r"Chỉnh sửa thông tin về Meta AI", re.I)
@@ -4211,13 +4218,14 @@ def create_meta_account(
     entry_url: str | None = None,
     proxy: str | None = None,
 ) -> LoginProgress:
-    """Tao 1 TK Meta: mo meta.ai -> dang nhap bang mail temp -> sinh nhat
-    du 18 tuoi -> mat khau co dinh -> xac nhan ten nguoi dung. Tra
-    LoginProgress; khi xong: step='done', detail co email, code = ten nguoi
-    dung Meta tu sinh (co the rong). proxy=None thi dung IP cua may (khong
-    dung proxy); proxy='host:port[:user:pass]' thi Chrome mo qua proxy do
-    nhung context van giu gio/ngon ngu Viet Nam (locale='vi'). entry_url
-    chi dung cho test (trang gia mo phong auth.meta.com)."""
+    """Tao 1 TK Meta: mo thang auth.meta.com -> dang nhap bang mail temp
+    -> sinh nhat du 18 tuoi -> mat khau co dinh -> xac nhan ten nguoi
+    dung Meta tu sinh (co the rong). proxy=None thi dung IP cua may
+    (khong dung proxy); proxy='host:port[:user:pass]' thi Chrome mo qua
+    proxy do nhung context van giu gio/ngon ngu Viet Nam (locale='vi').
+    entry_url chi dung cho test (trang gia mo phong auth.meta.com).
+    Vao thang auth.meta.com thay vi meta.ai de bo qua nut "Dang nhap" o
+    trang chu (user 2026-11-12 23:20)."""
     from mail_provider import (
         client as mail_client,
         create_mailbox_for,
@@ -4279,7 +4287,7 @@ def create_meta_account(
         page.set_default_timeout(20000)
         try:
             _emit(on_progress, step="open_meta", detail="Tải meta.ai…")
-            page.goto(entry_url or META_AI_URL, wait_until="domcontentloaded", timeout=90000)
+            page.goto(entry_url or META_AUTH_URL, wait_until="domcontentloaded", timeout=90000)
             try:
                 page.wait_for_load_state("load", timeout=20000)
             except Exception:
