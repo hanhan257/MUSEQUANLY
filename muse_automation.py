@@ -970,6 +970,13 @@ def _click_recaptcha_checkbox(page: Page) -> bool:
     tay' — tool phai tu bam, khong de user bam tay). Tra True neu bam
     duoc. Neu Google hien luoi chon hinh sau khi bam thi buoc goi cho
     user giai tay (hoac thu token sau)."""
+    js_click = """() => {
+      const el = document.querySelector('#recaptcha-anchor')
+        || document.querySelector('.recaptcha-checkbox')
+        || document.querySelector('[role="checkbox"]');
+      if (!el) return false;
+      try { el.click(); return true; } catch (e) { return false; }
+    }"""
     try:
         frames = list(page.frames)
     except Exception:
@@ -978,14 +985,36 @@ def _click_recaptcha_checkbox(page: Page) -> bool:
         url = (frame.url or "").lower()
         if "recaptcha" not in url or "anchor" not in url:
             continue
+        # Cach 1: chay JS ngay trong iframe anchor (cung nguon voi
+        # checkbox) — chac chan nhat.
+        try:
+            if frame.evaluate(js_click):
+                return True
+        except Exception:
+            pass
+        # Cach 2: bam qua locator cua frame.
         for sel in ("#recaptcha-anchor", ".recaptcha-checkbox", '[role="checkbox"]'):
             try:
                 loc = frame.locator(sel)
                 if loc.count() > 0:
-                    loc.first.click(timeout=5000)
+                    loc.first.click(timeout=5000, force=True)
                     return True
             except Exception:
                 continue
+    # Cach 3: dung frame_locator cua page (API khuyen dung cua
+    # Playwright cho iframe).
+    try:
+        fl = page.frame_locator('iframe[src*="recaptcha"][src*="anchor"]')
+        for sel in ("#recaptcha-anchor", ".recaptcha-checkbox", '[role="checkbox"]'):
+            try:
+                loc = fl.locator(sel)
+                if loc.count() > 0:
+                    loc.first.click(timeout=5000, force=True)
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        pass
     return False
 
 
