@@ -4229,6 +4229,7 @@ def create_meta_account(
     on_progress: ProgressCallback | None = None,
     entry_url: str | None = None,
     proxy: str | None = None,
+    muse_after: bool = False,
 ) -> LoginProgress:
     """Tao 1 TK Meta: mo thang auth.meta.com -> dang nhap bang mail temp
     -> sinh nhat du 18 tuoi -> mat khau co dinh -> xac nhan ten nguoi
@@ -4612,6 +4613,39 @@ def create_meta_account(
                 final_url=url,
             )
             _emit(on_progress, **result.__dict__)
+            if muse_after:
+                # Mo muse.ai ngay tren cung trinh duyet (phien Meta con
+                # dang nhap) — Muse se hien TK Meta vua tao de dang
+                # nhap (user 2026-11-12 23:31). Luu cookie Muse.
+                try:
+                    muse_result = _muse_login_drive(
+                        page, email, password,
+                        on_progress=on_progress, proxy=proxy,
+                    )
+                    if muse_result.step == "done":
+                        result = LoginProgress(
+                            step="done",
+                            detail=f"Đã tạo TK Meta {email} và đăng nhập Muse",
+                            code=username,
+                            cookies_count=muse_result.cookies_count,
+                            final_url=muse_result.final_url or url,
+                        )
+                    else:
+                        result = LoginProgress(
+                            step="done",
+                            detail=f"Đã tạo TK Meta {email} (chưa đăng nhập được Muse: {muse_result.error or ''})",
+                            code=username,
+                            final_url=url,
+                        )
+                    _emit(on_progress, **result.__dict__)
+                except Exception as exc:
+                    result = LoginProgress(
+                        step="done",
+                        detail=f"Đã tạo TK Meta {email} (mở Muse lỗi: {str(exc).strip()})",
+                        code=username,
+                        final_url=url,
+                    )
+                    _emit(on_progress, **result.__dict__)
             return result
         except Exception as exc:
             message = str(exc).strip() or "Không tạo được TK Meta"
@@ -4623,6 +4657,121 @@ def create_meta_account(
                 browser.close()
             except Exception:
                 pass
+
+
+def _muse_login_drive(
+    page,
+    email: str,
+    password: str,
+    *,
+    on_progress: ProgressCallback | None = None,
+    proxy: str | None = None,
+    muse_url: str | None = None,
+) -> LoginProgress:
+    """Dang nhap muse.ai tren 1 trang da mo (dung chung phien Meta).
+    Mo muse.ai -> neu da dang nhap (phien Meta con) thi luu cookie
+    ngay; neu hien nut "Tiep tuc bang Meta" thi bam; neu hien o email
+    thi nhap email -> Continue -> mat khau/OTP nhu thuong. Tra
+    LoginProgress; khi xong step='done', cookies_count > 0.
+    muse_url chi dung cho test."""
+    _emit(on_progress, step="open_muse", detail="Mở muse.ai…")
+    page.goto(muse_url or MUSE_URL, wait_until="domcontentloaded", timeout=90000)
+    try:
+        page.wait_for_load_state("load", timeout=20000)
+    except Exception:
+        pass
+    page.wait_for_timeout(2000)
+    try:
+        login_btn = page.get_by_role("button", name=re.compile(r"^Log in$", re.I)).first
+        if login_btn.count() > 0 and login_btn.is_visible():
+            login_btn.click()
+            page.wait_for_timeout(2000)
+    except Exception:
+        pass
+    if _logged_in_now(page):
+        cookies = page.context.cookies()
+        record = save_account_cookies(email, cookies, cookie_source="meta-login")
+        result = LoginProgress(
+            step="done",
+            detail=f"Đã đăng nhập Muse bằng TK Meta {email} (phiên Meta)",
+            cookies_count=int(record.get("count") or 0),
+            final_url=page.url,
+        )
+        _emit(on_progress, **result.__dict__)
+        return result
+    try:
+        email_inp = page.get_by_placeholder("Mobile number or email")
+        if email_inp.count() == 0:
+            email_inp = page.locator("input").first
+        email_inp.wait_for(state="visible", timeout=15000)
+        email_inp.fill(email)
+    except Exception:
+        pass
+    else:
+        _emit(on_progress, step="email", detail=f"Đã nhập {email} — bấm Continue…")
+        if not _click_enabled_button(page, BTN_NEXT):
+            raise RuntimeError("Không bấm được Continue sau khi nhập email")
+    mail_token: str | None = None
+    wait_for_code = None
+    _mail_proxies = None
+    for _ in range(24):
+        if stop_requested():
+            raise RuntimeError("Đã dừng")
+        if _logged_in_now(page):
+            break
+        if _text_visible(page, re.compile(r"Ngày sinh|Sinh nhật|Confirm your age|Thẻ|Enter a valid credit card", re.I)):
+            raise RuntimeError("Muse không nhận TK Meta này — quay lại bước tạo TK Meta")
+        meta_btn = page.get_by_text(re.compile(r"Tiếp tục bằng Meta|Continue with Meta", re.I))
+        if meta_btn.count() > 0 and meta_btn.first.is_visible():
+            _emit(on_progress, step="meta_login", detail="Thấy nút đăng nhập bằng Meta — bấm vào…")
+            meta_btn.first.click()
+            page.wait_for_timeout(2000)
+            continue
+        pw = page.locator('input[type="password"]')
+        if pw.count() > 0 and pw.first.is_visible():
+            _emit(on_progress, step="meta_password", detail="Nhập mật khẩu Meta…")
+            pw.first.fill(password)
+            if not _click_enabled_button(page, BTN_NEXT):
+                raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mật khẩu Meta")
+            page.wait_for_timeout(2000)
+            continue
+        otp = page.locator('input[autocomplete="one-time-code"]')
+        if otp.count() > 0 and otp.first.is_visible():
+            if wait_for_code is None:
+                from mail_provider import (
+                    client as mail_client,
+                    provider_for_email,
+                    requests_proxies,
+                )
+
+                _mail_proxies = requests_proxies(proxy)
+                _prov = provider_for_email(email, proxies=_mail_proxies)
+                _mc = mail_client(_prov)
+                wait_for_code = _mc.wait_for_code
+                try:
+                    mail_token = _mc.login_mailbox(email, password, proxies=_mail_proxies)
+                except Exception:
+                    mail_token = email
+            _emit(on_progress, step="wait_code", detail="Chờ mã đăng nhập gửi về mail…")
+            code = wait_for_code(mail_token or email, timeout=120, proxies=_mail_proxies)
+            otp.first.fill(code)
+            if not _click_enabled_button(page, BTN_NEXT):
+                raise RuntimeError("Không bấm được Tiếp tục sau khi nhập mã")
+            page.wait_for_timeout(2000)
+            continue
+        page.wait_for_timeout(2500)
+    if not _logged_in_now(page):
+        raise RuntimeError("Đăng nhập xong nhưng chưa vào được Muse")
+    cookies = page.context.cookies()
+    record = save_account_cookies(email, cookies, cookie_source="meta-login")
+    result = LoginProgress(
+        step="done",
+        detail=f"Đã đăng nhập Muse bằng TK Meta {email}",
+        cookies_count=int(record.get("count") or 0),
+        final_url=page.url,
+    )
+    _emit(on_progress, **result.__dict__)
+    return result
 
 
 def login_muse_with_meta(

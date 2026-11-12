@@ -96,7 +96,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v152"
+APP_BUILD = "signup-v153"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2516,11 +2516,11 @@ def _run_meta_login_batch(job_id: str, count: int, proxies: list[str], per_proxy
 
 def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.Lock, mail_provider: str, browser: str, index: int, muse_proxy: str) -> None:
     """Mot TK Muse tron ven: tao TK Meta (mail temp, sinh nhat 18+,
-    mat khau co dinh) roi dang nhap muse.ai bang TK Meta do. CA HAI
-    BUOC DUNG CHUNG 1 PROXY US ngay tu dau (theo user 2026-11-12
-    23:10 — mo trinh duyet la bo proxy US vao luon, khong tao Meta
-    bang IP may roi moi doi proxy US). TK Meta luon duoc luu vao kho
-    (de thu lai buoc 2 neu can)."""
+    mat khau co dinh) roi mo muse.ai NGAY TREN CUNG TRINH DUYET
+    (phien Meta con dang nhap) — Muse se hien TK Meta vua tao de
+    dang nhap (user 2026-11-12 23:31). CA HAI BUOC DUNG CHUNG 1
+    PROXY US ngay tu dau. TK Meta luon duoc luu vao kho (de thu lai
+    buoc 2 neu can)."""
     box = {"key": f"luồng {index}", "email": ""}
 
     def on_progress(p: LoginProgress) -> None:
@@ -2541,7 +2541,8 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
 
     with state_lock:
         state["running"].append(box["key"])
-    # Buoc 1: tao TK Meta — dung luon proxy US (khong dung IP may).
+    # Buoc 1+2: tao TK Meta roi mo muse.ai ngay tren cung trinh duyet
+    # (phien Meta con dang nhap) — dung luon proxy US.
     try:
         result = create_meta_account(
             mail_provider=mail_provider,
@@ -2549,6 +2550,7 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
             account_password=ACCOUNT_PASSWORD,
             on_progress=on_progress,
             proxy=muse_proxy or None,
+            muse_after=True,
         )
     except Exception as exc:
         result = LoginProgress(step="error", error=str(exc))
@@ -2575,16 +2577,14 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
         add_meta_account(email, ACCOUNT_PASSWORD, result.code or "")
     except Exception:
         pass
-    # Buoc 2: dang nhap muse.ai bang TK Meta vua tao, qua proxy US.
-    try:
-        login_result = login_muse_with_meta(email, ACCOUNT_PASSWORD, proxy=muse_proxy, browser_name=browser, on_progress=on_progress)
-    except Exception as exc:
-        login_result = LoginProgress(step="error", error=str(exc))
+    # Dang nhap Muse da xong trong cung phien (muse_after=True):
+    # thanh cong khi detail ghi "va dang nhap Muse" (co cookie).
+    muse_ok = ("và đăng nhập Muse" in (result.detail or "")) and (result.cookies_count or 0) > 0
     with state_lock:
         state["running"] = [x for x in state["running"] if x != box["key"]]
         (state.get("steps") or {}).pop(box["key"], None)
         state["finished"] += 1
-        if login_result.step == "done":
+        if muse_ok:
             state["ok"] += 1
             # Dang nhap Muse xong thi TK Meta nay da dung (de kho khong
             # lay lai no o muc dang nhap lai).
@@ -2596,7 +2596,7 @@ def _meta_muse_one(job_id: str, total: int, state: dict, state_lock: threading.L
                 pass
         else:
             state["fail"] += 1
-            err = (login_result.error or "Không đăng nhập được Muse").strip()
+            err = (result.detail or "Không đăng nhập được Muse").strip()
             line = f"{email}: Tạo Meta xong nhưng đăng nhập Muse lỗi — {err}"
             state["failures"].append(line)
             state["last_error"] = line
