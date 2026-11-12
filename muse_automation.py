@@ -3568,14 +3568,18 @@ def login_muse(
 
     known_ids = meta_message_ids(email)
     mailbox_password = (mailtm_password or "").strip()
-    if _mail_provider == "gmail":
-        # Mat khau ung dung Gmail chi nam trong gmail_accounts.json (file
-        # rieng, gitignore) — kho TK chi luu ACCOUNT_PASSWORD chung, nen
-        # lay lai mat khau that theo email truoc khi mo hop thu.
+    if _mail_provider in ("gmail", "yahoo"):
+        # Mat khau ung dung chi nam trong gmail_accounts.json /
+        # yahoo_accounts.json (file rieng, gitignore) — kho TK chi luu
+        # ACCOUNT_PASSWORD chung, nen lay lai mat khau that theo email
+        # truoc khi mo hop thu.
         try:
-            from gmail_store import get_app_password
-
-            mailbox_password = get_app_password(email) or ""
+            _store = (
+                __import__("gmail_store")
+                if _mail_provider == "gmail"
+                else __import__("yahoo_store")
+            )
+            mailbox_password = _store.get_app_password(email) or ""
         except Exception:
             mailbox_password = ""
     mail_token = ""

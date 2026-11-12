@@ -94,7 +94,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v130"
+APP_BUILD = "signup-v131"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -378,13 +378,18 @@ def api_otp(email: str):
     email = email.strip()
     created = find_created_account(email) or {}
     mailbox_password = (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email)
-    if (created.get("mail_provider") or "").strip().lower() == "gmail":
-        # Mat khau ung dung Gmail chi nam trong gmail_accounts.json (file
-        # rieng, gitignore) — kho TK chi luu ACCOUNT_PASSWORD chung.
+    _mp = (created.get("mail_provider") or "").strip().lower()
+    if _mp in ("gmail", "yahoo"):
+        # Mat khau ung dung chi nam trong gmail_accounts.json /
+        # yahoo_accounts.json (file rieng, gitignore) — kho TK chi luu
+        # ACCOUNT_PASSWORD chung.
         try:
-            from gmail_store import get_app_password
-
-            mailbox_password = get_app_password(email) or ""
+            _store = (
+                __import__("gmail_store")
+                if _mp == "gmail"
+                else __import__("yahoo_store")
+            )
+            mailbox_password = _store.get_app_password(email) or ""
         except Exception:
             mailbox_password = ""
     if mailbox_password:
@@ -2178,6 +2183,49 @@ def api_gmail_reset_many():
     return jsonify({"ok": True, "reset": reset, **gmail_summary()})
 
 
+@app.get("/api/yahoo")
+def api_yahoo_list():
+    from yahoo_store import yahoo_summary
+
+    return jsonify({"ok": True, **yahoo_summary()})
+
+
+@app.post("/api/yahoo/add-many")
+def api_yahoo_add_many():
+    from yahoo_store import add_yahoo_accounts
+
+    body = request.get_json(force=True, silent=True) or {}
+    if not str(body.get("text") or "").strip():
+        return jsonify({"ok": False, "error": "Chưa dán Yahoo nào."}), 400
+    return jsonify({"ok": True, **add_yahoo_accounts(body.get("text") or "")})
+
+
+@app.post("/api/yahoo/delete")
+def api_yahoo_delete():
+    from yahoo_store import delete_yahoo_accounts, yahoo_summary
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or ([body.get("id")] if body.get("id") else [])
+    removed = delete_yahoo_accounts([str(item) for item in ids])
+    if not removed:
+        return jsonify({"ok": False, "error": "Không thấy Yahoo."}), 404
+    return jsonify({"ok": True, "removed": removed, **yahoo_summary()})
+
+
+@app.post("/api/yahoo/reset-many")
+def api_yahoo_reset_many():
+    from yahoo_store import reset_yahoo_accounts, yahoo_summary
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "error": "Chưa chọn Yahoo."}), 400
+    reset = reset_yahoo_accounts([str(item) for item in ids])
+    if not reset:
+        return jsonify({"ok": False, "error": "Không thấy Yahoo."}), 404
+    return jsonify({"ok": True, "reset": reset, **yahoo_summary()})
+
+
 @app.get("/api/summary")
 def api_summary():
     """Số lượng active/tổng cho sidebar: tài khoản có cookie / tổng tài khoản."""
@@ -2205,6 +2253,12 @@ def api_summary():
         gmail_rows = _list_gmail()
     except Exception:
         gmail_rows = []
+    try:
+        from yahoo_store import list_yahoo_accounts as _list_yahoo
+
+        yahoo_rows = _list_yahoo()
+    except Exception:
+        yahoo_rows = []
     return jsonify(
         {
             "ok": True,
@@ -2220,6 +2274,10 @@ def api_summary():
             "gmail": {
                 "active": sum(1 for g in gmail_rows if g.get("status") == "ready"),
                 "total": len(gmail_rows),
+            },
+            "yahoo": {
+                "active": sum(1 for g in yahoo_rows if g.get("status") == "ready"),
+                "total": len(yahoo_rows),
             },
         }
     )

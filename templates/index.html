@@ -308,6 +308,7 @@
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ<span class="side-count" id="countCards"></span></button>
         <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy<span class="side-count" id="countProxies"></span></button>
         <button type="button" class="btn-ghost" id="btnGmailView">Kho Gmail<span class="side-count" id="countGmail"></span></button>
+        <button type="button" class="btn-ghost" id="btnYahooView">Kho Yahoo<span class="side-count" id="countYahoo"></span></button>
         <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản<span class="side-count" id="countBuff"></span></button>
         <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
@@ -362,6 +363,9 @@
             <option value="genemail">generator.email — domain xoay (mới)</option>
             <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
             <option value="gmail">Gmail — @gmail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+            <option value="yahoo">Yahoo — @yahoo.com / @ymail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+            <option value="tempemail">Tempemail.cc — @icmans.com (mới)</option>
+            <option value="tenminutemail">10 Minute Mail — địa chỉ 10 phút (mới)</option>
           </select>
           <label for="signupBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này. Tự động = dùng Chrome/Edge đã cài, không có thì Chromium của Playwright.</label>
           <select id="signupBrowser">
@@ -410,6 +414,9 @@
             <option value="genemail">generator.email — domain xoay (mới)</option>
             <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
             <option value="gmail">Gmail — @gmail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+            <option value="yahoo">Yahoo — @yahoo.com / @ymail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
+            <option value="tempemail">Tempemail.cc — @icmans.com (mới)</option>
+            <option value="tenminutemail">10 Minute Mail — địa chỉ 10 phút (mới)</option>
           </select>
           <label for="buffBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này.</label>
           <select id="buffBrowser">
@@ -561,6 +568,26 @@
         </div>
         <div class="panel"><div id="gmailTable"></div></div>
       </div>
+      <div id="yahooView" hidden>
+        <div class="top">
+          <div>
+            <h2>Kho Yahoo</h2>
+            <div class="meta">Yahoo của bạn dùng để tạo tài khoản Muse — Yahoo nằm trong nhóm domain được tin nhất (Gmail, Hotmail, Yahoo) nên có cơ hội qua được bước ngày sinh. Mỗi Yahoo tạo đúng 1 tài khoản, lấy theo thứ tự từ trên xuống. Cần tạo "Mật khẩu ứng dụng" 16 ký tự (Yahoo → Bảo mật tài khoản → Kết nối bên ngoài → Tạo mật khẩu ứng dụng) rồi dán vào đây, KHÔNG dùng mật khẩu đăng nhập Yahoo thường. Mật khẩu ứng dụng chỉ lưu trong file yahoo_accounts.json trên máy này, không đẩy lên git.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-bottom:0.75rem;">
+          <textarea id="yahooPaste" placeholder="ten1@yahoo.com|abcd efgh ijkl mnop&#10;ten2@ymail.com|xxxx xxxx xxxx xxxx" style="flex:1;min-height:4.5rem;"></textarea>
+          <button type="button" class="btn-primary" id="btnAddYahoo">Thêm Yahoo</button>
+        </div>
+        <div class="dash" id="yahooDash"></div>
+        <div class="toolbar" id="yahooBulkBar" style="margin-bottom:0.75rem;">
+          <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedYahoo" disabled>Xóa đã chọn</button>
+          <button type="button" class="btn-error btn-sm" id="btnDeleteAllYahoo">Xóa tất cả</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetSelectedYahoo" disabled>Mở lại đã chọn</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetAllYahoo">Mở lại tất cả</button>
+        </div>
+        <div class="panel"><div id="yahooTable"></div></div>
+      </div>
     </main>
   </div>
 
@@ -670,12 +697,14 @@
       const cards = viewMode === 'cards';
       const proxy = viewMode === 'proxy';
       const gmail = viewMode === 'gmail';
+      const yahoo = viewMode === 'yahoo';
       const buff = viewMode === 'buff';
       const account = viewMode === 'account' || viewMode === 'kho';
       document.getElementById('signupView').hidden = !signup;
       document.getElementById('cardView').hidden = !cards;
       document.getElementById('proxyView').hidden = !proxy;
       document.getElementById('gmailView').hidden = !gmail;
+      document.getElementById('yahooView').hidden = !yahoo;
       document.getElementById('buffView').hidden = !buff;
       document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = 'Tạo tài khoản Muse';
@@ -683,6 +712,7 @@
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnProxyView').classList.toggle('active', proxy);
       document.getElementById('btnGmailView').classList.toggle('active', gmail);
+      document.getElementById('btnYahooView').classList.toggle('active', yahoo);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
       document.getElementById('btnAccountView').classList.toggle('active', account);
     }
@@ -1611,6 +1641,7 @@
         set('countCards', data.cards);
         set('countProxies', data.proxies);
         set('countGmail', data.gmail);
+        set('countYahoo', data.yahoo);
         set('countBuff', data.buff);
       } catch (e) { /* để lần sau */ }
     }
@@ -2034,6 +2065,182 @@
       const errs = (data.errors || []).length;
       toast(`Đã thêm mới ${added} Gmail` + (dup ? ` · ${dup} Gmail trùng đã bỏ qua` : '') + (errs ? ` · ${errs} dòng lỗi (sai dạng email|mật khẩu ứng dụng)` : ''));
     });
+    let yahooRows = [];
+    let yahooSelected = new Set();
+    function renderYahoo(data) {
+      yahooRows = (data && data.yahoo) || [];
+      const yahooIds = new Set(yahooRows.map(g => g.id));
+      yahooSelected.forEach(id => { if (!yahooIds.has(id)) yahooSelected.delete(id); });
+      const delSelBtn = document.getElementById('btnDeleteSelectedYahoo');
+      const delAllBtn = document.getElementById('btnDeleteAllYahoo');
+      delSelBtn.disabled = yahooSelected.size === 0;
+      delSelBtn.textContent = yahooSelected.size ? `Xóa đã chọn (${yahooSelected.size})` : 'Xóa đã chọn';
+      delAllBtn.disabled = yahooRows.length === 0;
+      delAllBtn.textContent = yahooRows.length ? `Xóa tất cả (${yahooRows.length})` : 'Xóa tất cả';
+      const resetSelBtn = document.getElementById('btnResetSelectedYahoo');
+      const resetAllBtn = document.getElementById('btnResetAllYahoo');
+      const usedCount = yahooRows.filter(g => g.status !== 'ready').length;
+      resetSelBtn.disabled = yahooSelected.size === 0;
+      resetSelBtn.textContent = yahooSelected.size ? `Mở lại đã chọn (${yahooSelected.size})` : 'Mở lại đã chọn';
+      resetAllBtn.disabled = usedCount === 0;
+      resetAllBtn.textContent = usedCount ? `Mở lại tất cả (${usedCount})` : 'Mở lại tất cả';
+      const box = document.getElementById('yahooTable');
+      const ready = yahooRows.filter(g => g.status === 'ready').length;
+      document.getElementById('yahooDash').innerHTML = `
+        <div class="stat"><b>${yahooRows.length}</b><span>Tổng Yahoo</span></div>
+        <div class="stat good"><b>${ready}</b><span>Sẵn sàng</span></div>
+        <div class="stat bad"><b>${yahooRows.length - ready}</b><span>Đã dùng</span></div>
+        <div class="stat"><b>1</b><span>TK / Yahoo</span></div>`;
+      if (!yahooRows.length) {
+        box.innerHTML = '<p class="hint">Chưa có Yahoo nào. Dán Yahoo theo dạng email|mật khẩu ứng dụng vào ô trên rồi bấm Thêm Yahoo.</p>';
+        return;
+      }
+      const rows = yahooRows.map((g, i) => {
+        const actions = [];
+        if (g.status !== 'ready') actions.push(`<button type="button" class="btn-ghost btn-sm" data-yahoo-reset="${g.id}">Mở lại</button>`);
+        actions.push(`<button type="button" class="btn-ghost btn-sm" data-yahoo-del="${g.id}">Xóa</button>`);
+        return `<tr><td class="check"><input type="checkbox" class="yahoo-check" data-yahoo-check="${g.id}" ${yahooSelected.has(g.id) ? 'checked' : ''} /></td><td>${i + 1}</td><td><code>${escapeHtml(g.email || '')}</code></td><td>${g.uses || 0} lượt</td><td>${g.status === 'ready' ? '<span class="badge live">Sẵn sàng</span>' : '<span class="badge no">Đã dùng</span>'}</td><td>${actions.join(' ')}</td></tr>`;
+      }).join('');
+      box.innerHTML = `<table class="tbl"><thead><tr><th class="check"><input type="checkbox" id="yahooCheckAll" title="Chọn tất cả Yahoo" /></th><th>#</th><th>Yahoo</th><th>Lượt dùng</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      const checkAll = document.getElementById('yahooCheckAll');
+      if (checkAll) {
+        const selected = yahooRows.filter(g => yahooSelected.has(g.id)).length;
+        checkAll.checked = yahooRows.length > 0 && selected === yahooRows.length;
+        checkAll.indeterminate = selected > 0 && selected < yahooRows.length;
+        checkAll.addEventListener('change', () => {
+          yahooRows.forEach(g => {
+            if (checkAll.checked) yahooSelected.add(g.id);
+            else yahooSelected.delete(g.id);
+          });
+          renderYahoo({ yahoo: yahooRows });
+        });
+      }
+      box.querySelectorAll('.yahoo-check').forEach(boxEl => {
+        boxEl.addEventListener('change', () => {
+          if (boxEl.checked) yahooSelected.add(boxEl.dataset.yahooCheck);
+          else yahooSelected.delete(boxEl.dataset.yahooCheck);
+          renderYahoo({ yahoo: yahooRows });
+        });
+      });
+      box.querySelectorAll('[data-yahoo-del]').forEach(btn => btn.addEventListener('click', () => deleteYahoo(btn.getAttribute('data-yahoo-del'))));
+      box.querySelectorAll('[data-yahoo-reset]').forEach(btn => btn.addEventListener('click', () => resetYahoo(btn.getAttribute('data-yahoo-reset'))));
+    }
+    async function loadYahoo() {
+      const res = await fetch('/api/yahoo?t=' + Date.now(), { cache: 'no-store' });
+      renderYahoo(await res.json());
+    }
+    async function deleteYahoo(id) {
+      if (!confirm('Xóa Yahoo này khỏi kho?')) return;
+      const res = await fetch('/api/yahoo/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast('Đã xóa Yahoo');
+    }
+    async function resetYahoo(id) {
+      const res = await fetch('/api/yahoo/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast('Đã mở lại Yahoo');
+    }
+    async function deleteYahooByIds(ids) {
+      const res = await fetch('/api/yahoo/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function deleteSelectedYahoo() {
+      if (!yahooSelected.size) return;
+      const ids = [...yahooSelected];
+      if (!confirm(`Xóa ${ids.length} Yahoo đã chọn? Yahoo bị xóa khỏi kho, không lấy lại được.`)) return;
+      const data = await deleteYahooByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      yahooSelected.clear();
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} Yahoo`);
+    }
+    async function deleteAllYahoo() {
+      if (!yahooRows.length) return;
+      if (!confirm(`Xóa TẤT CẢ ${yahooRows.length} Yahoo trong kho? Yahoo bị xóa khỏi kho, không lấy lại được.`)) return;
+      const ids = yahooRows.map(g => g.id);
+      const data = await deleteYahooByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      yahooSelected.clear();
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} Yahoo`);
+    }
+    document.getElementById('btnDeleteSelectedYahoo').addEventListener('click', deleteSelectedYahoo);
+    document.getElementById('btnDeleteAllYahoo').addEventListener('click', deleteAllYahoo);
+    async function resetYahooByIds(ids) {
+      const res = await fetch('/api/yahoo/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function resetSelectedYahoo() {
+      if (!yahooSelected.size) return;
+      const ids = [...yahooSelected];
+      if (!confirm(`Mở lại ${ids.length} Yahoo đã chọn? Yahoo sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetYahooByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      yahooSelected.clear();
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} Yahoo`);
+    }
+    async function resetAllYahoo() {
+      const ids = yahooRows.filter(g => g.status !== 'ready').map(g => g.id);
+      if (!ids.length) { toast('Không có Yahoo đã dùng nào.'); return; }
+      if (!confirm(`Mở lại tất cả ${ids.length} Yahoo đã dùng? Yahoo sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetYahooByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      yahooSelected.clear();
+      renderYahoo(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} Yahoo`);
+    }
+    document.getElementById('btnResetSelectedYahoo').addEventListener('click', resetSelectedYahoo);
+    document.getElementById('btnResetAllYahoo').addEventListener('click', resetAllYahoo);
+    document.getElementById('btnYahooView').addEventListener('click', async () => {
+      viewMode = 'yahoo';
+      applyView();
+      await loadYahoo();
+    });
+    document.getElementById('btnAddYahoo').addEventListener('click', async () => {
+      const text = document.getElementById('yahooPaste').value;
+      if (!text.trim()) { toast('Chưa dán Yahoo nào.'); return; }
+      const res = await fetch('/api/yahoo/add-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không thêm được Yahoo'); return; }
+      document.getElementById('yahooPaste').value = '';
+      renderYahoo(data);
+      loadSidebarCounts();
+      const added = data.added || 0;
+      const dup = data.duplicate || 0;
+      const errs = (data.errors || []).length;
+      toast(`Đã thêm mới ${added} Yahoo` + (dup ? ` · ${dup} Yahoo trùng đã bỏ qua` : '') + (errs ? ` · ${errs} dòng lỗi (sai dạng email|mật khẩu ứng dụng)` : ''));
+    });
     function signupMode() {
       return 'password';
     }
@@ -2045,8 +2252,14 @@
         ? 'han + 9 số @<domain xoay của generator.email> · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
         : p === 'guerrilla'
         ? 'han + 9 số @<domain xoay của Guerrilla Mail> · mật khẩu hộp thư Congphu21@ · mail chỉ sống 1 giờ, tạo xong dùng ngay'
+        : p === 'yahoo'
+        ? 'Yahoo của bạn trong Kho Yahoo · 1 Yahoo = 1 tài khoản · đọc mã OTP qua IMAP bằng mật khẩu ứng dụng 16 ký tự'
         : p === 'gmail'
         ? 'Gmail của bạn trong Kho Gmail · 1 Gmail = 1 tài khoản · đọc mã OTP qua IMAP bằng mật khẩu ứng dụng 16 ký tự'
+        : p === 'tempemail'
+        ? 'han + 9 số @icmans.com qua API tempemail.cc · mật khẩu hộp thư Congphu21@ · token JWT lưu trên máy để mở lại'
+        : p === 'tenminutemail'
+        ? 'Địa chỉ 10 Minute Mail ngẫu nhiên · chỉ sống 10 phút, tạo xong dùng ngay, không đăng nhập lại được'
         : 'han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã';
     }
     function setSignupButtons(disabled) {
@@ -2096,7 +2309,7 @@
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
-      const lead = mailProvider === 'gmail' ? 'Đang lấy Gmail sẵn sàng trong Kho Gmail, đọc mã OTP qua IMAP' : mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : mailProvider === 'genemail' ? 'Đang tạo mail han + 9 số @<domain xoay generator.email>, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
+      const lead = mailProvider === 'tempemail' ? 'Đang tạo mail @icmans.com qua API tempemail.cc' : mailProvider === 'tenminutemail' ? 'Đang tạo địa chỉ 10 Minute Mail (sống 10 phút)' : mailProvider === 'yahoo' ? 'Đang lấy Yahoo sẵn sàng trong Kho Yahoo, đọc mã OTP qua IMAP' : mailProvider === 'gmail' ? 'Đang lấy Gmail sẵn sàng trong Kho Gmail, đọc mã OTP qua IMAP' : mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : mailProvider === 'genemail' ? 'Đang tạo mail han + 9 số @<domain xoay generator.email>, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
         'running'

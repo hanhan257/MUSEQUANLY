@@ -6,3 +6,9 @@ __pycache__/
 
 # Kho Gmail: mat khau ung dung Gmail — KHONG commit file nay.
 gmail_accounts.json
+
+# Kho Yahoo: mat khau ung dung Yahoo — KHONG commit file nay.
+yahoo_accounts.json
+
+# Kho Tempemail.cc: token JWT hop thu — KHONG commit file nay.
+tempemail_tokens.json

@@ -20,6 +20,19 @@ chi la doi module:
   chua dung trong Kho Gmail (gmail_store.py), 1 Gmail = 1 TK Muse; doc
   ma OTP qua IMAP bang mat khau ung dung 16 ky tu. Mat khau ung dung chi
   nam trong gmail_accounts.json (da gitignore), khong ghi vao kho TK.
+- "yahoo": Yahoo Mail that cua user (them tu v131). KHONG tao moi — lay Yahoo
+  chua dung trong Kho Yahoo (yahoo_store.py), 1 Yahoo = 1 TK Muse; doc
+  ma OTP qua IMAP bang mat khau ung dung 16 ky tu (Yahoo -> Bao mat tai
+  khoan -> Ket noi ben ngoai -> Tao mat khau ung dung). Mat khau ung dung
+  chi nam trong yahoo_accounts.json (da gitignore), khong ghi vao kho TK.
+- "tempemail": Tempemail.cc (them tu v131). API cong khai, khong can dang
+  ky/key — POST /api/accounts (can UA trinh duyet + mat khau co 1 chu
+  hoa), doc qua GET /api/messages + JWT. Token JWT chi co luc tao, luu
+  vao tempemail_tokens.json (da gitignore) de dang nhap lai.
+- "tenminutemail": 10 Minute Mail (them tu v131). Khong co API cong khai
+  — dung 2 endpoint AJAX cu cua 10minutemail.net, doc hop thu can cung
+  session luc tao dia chi. Dia chi chi song 10 phut, khong dang nhap
+  lai duoc.
 """
 import importlib
 from urllib.parse import quote, unquote, urlparse
@@ -30,6 +43,9 @@ PROVIDERS = {
     "genemail": ("generator_email_client", "GeneratorEmailError", "generator.email"),
     "guerrilla": ("guerrilla_mail_client", "GuerrillaMailError", "guerrilla-mail"),
     "gmail": ("gmail_client", "GmailError", "gmail"),
+    "yahoo": ("yahoo_client", "YahooError", "yahoo"),
+    "tempemail": ("tempemail_client", "TempEmailError", "tempemail.cc"),
+    "tenminutemail": ("tenminutemail_client", "TenMinuteMailError", "10minutemail"),
 }
 
 
@@ -97,6 +113,12 @@ def normalize_provider(value) -> str:
         return "guerrilla"
     if v in ("gmail",):
         return "gmail"
+    if v in ("yahoo",):
+        return "yahoo"
+    if v in ("tempemail", "tempemailcc"):
+        return "tempemail"
+    if v in ("tenminutemail", "10minutemail", "10mm"):
+        return "tenminutemail"
     return "tempmail"
 
 
@@ -151,8 +173,12 @@ def provider_for_email(email, proxies=None) -> str:
             return "guerrilla"
     except Exception:
         pass
+    if domain in ("yahoo.com", "ymail.com"):
+        return "yahoo"
     if domain == "gmail.com":
         return "gmail"
+    if domain == "icmans.com":
+        return "tempemail"
     try:
         from generator_email_client import is_active_domain
 
@@ -183,12 +209,29 @@ def create_mailbox_for(provider, password: str, mode: str, proxies=None) -> tupl
         if mode == "password":
             return mod.create_han_mailbox(password, proxies=proxies)
         return mod.create_mailbox(password, proxies=proxies)
+    if provider == "yahoo":
+        # Yahoo khong tao moi — lay Yahoo chua dung trong Kho Yahoo.
+        # Tra ve (email, password truyen vao, token 'email|mat-khau-ung-dung'):
+        # password la ACCOUNT_PASSWORD chung (lam mat khau TK Muse + luu
+        # kho nhu cac provider khac); mat khau ung dung that chi nam trong
+        # token va file yahoo_accounts.json.
+        return mod.create_mailbox(password, proxies=proxies)
     if provider == "gmail":
         # Gmail khong tao moi — lay Gmail chua dung trong Kho Gmail.
         # Tra ve (email, password truyen vao, token 'email|mat-khau-ung-dung'):
         # password la ACCOUNT_PASSWORD chung (lam mat khau TK Muse + luu
         # kho nhu cac provider khac); mat khau ung dung that chi nam trong
         # token va file gmail_accounts.json.
+        return mod.create_mailbox(password, proxies=proxies)
+    if provider == "tempemail":
+        # Domain lay live tu /api/domains, khong truyen domain.
+        if mode == "password":
+            return mod.create_han_mailbox(password, proxies=proxies)
+        return mod.create_mailbox(password, proxies=proxies)
+    if provider == "tenminutemail":
+        # Dia chi ngau nhien do server chon, chi song 10 phut.
+        if mode == "password":
+            return mod.create_han_mailbox(password, proxies=proxies)
         return mod.create_mailbox(password, proxies=proxies)
     if mode == "password":
         return mod.create_han_mailbox(password, "fldubai.com", proxies=proxies)
