@@ -137,6 +137,23 @@ def take_meta_account() -> dict[str, Any] | None:
     return None
 
 
+def mark_meta_used(email: str) -> bool:
+    """Danh dau 1 TK Meta cu the la da dung (sau khi dang nhap Muse
+    thanh cong bang no). Tra True neu tim thay va doi trang thai."""
+    key = (email or "").strip().lower()
+    if not key:
+        return False
+    with _LOCK:
+        data = _load()
+        for row in data.get("accounts", []):
+            if (row.get("email") or "").strip().lower() == key:
+                row["status"] = "used"
+                row["uses"] = int(row.get("uses") or 0) + 1
+                _save(data)
+                return True
+    return False
+
+
 def delete_meta_accounts(ids: list[str]) -> int:
     keys = {(i or "").strip().lower() for i in (ids or []) if (i or "").strip()}
     if not keys:
