@@ -94,7 +94,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v129"
+APP_BUILD = "signup-v130"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -378,6 +378,15 @@ def api_otp(email: str):
     email = email.strip()
     created = find_created_account(email) or {}
     mailbox_password = (created.get("mailtm_password") or "").strip() or get_mailtm_password_for_email(email)
+    if (created.get("mail_provider") or "").strip().lower() == "gmail":
+        # Mat khau ung dung Gmail chi nam trong gmail_accounts.json (file
+        # rieng, gitignore) — kho TK chi luu ACCOUNT_PASSWORD chung.
+        try:
+            from gmail_store import get_app_password
+
+            mailbox_password = get_app_password(email) or ""
+        except Exception:
+            mailbox_password = ""
     if mailbox_password:
         from mail_provider import client as mail_client, error_class as mail_error_class, label as mail_label, provider_for_email, requests_proxies
 
@@ -2126,6 +2135,49 @@ def api_proxies_reset_many():
     return jsonify({"ok": True, "reset": reset, "proxies": list_proxies()})
 
 
+@app.get("/api/gmail")
+def api_gmail_list():
+    from gmail_store import gmail_summary
+
+    return jsonify({"ok": True, **gmail_summary()})
+
+
+@app.post("/api/gmail/add-many")
+def api_gmail_add_many():
+    from gmail_store import add_gmail_accounts
+
+    body = request.get_json(force=True, silent=True) or {}
+    if not str(body.get("text") or "").strip():
+        return jsonify({"ok": False, "error": "Chưa dán Gmail nào."}), 400
+    return jsonify({"ok": True, **add_gmail_accounts(body.get("text") or "")})
+
+
+@app.post("/api/gmail/delete")
+def api_gmail_delete():
+    from gmail_store import delete_gmail_accounts, gmail_summary
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or ([body.get("id")] if body.get("id") else [])
+    removed = delete_gmail_accounts([str(item) for item in ids])
+    if not removed:
+        return jsonify({"ok": False, "error": "Không thấy Gmail."}), 404
+    return jsonify({"ok": True, "removed": removed, **gmail_summary()})
+
+
+@app.post("/api/gmail/reset-many")
+def api_gmail_reset_many():
+    from gmail_store import gmail_summary, reset_gmail_accounts
+
+    body = request.get_json(force=True, silent=True) or {}
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "error": "Chưa chọn Gmail."}), 400
+    reset = reset_gmail_accounts([str(item) for item in ids])
+    if not reset:
+        return jsonify({"ok": False, "error": "Không thấy Gmail."}), 404
+    return jsonify({"ok": True, "reset": reset, **gmail_summary()})
+
+
 @app.get("/api/summary")
 def api_summary():
     """Số lượng active/tổng cho sidebar: tài khoản có cookie / tổng tài khoản."""
@@ -2147,6 +2199,12 @@ def api_summary():
     ]
     cards = list_card_warehouses()["warehouses"]
     proxies = list_proxies()
+    try:
+        from gmail_store import list_gmail_accounts as _list_gmail
+
+        gmail_rows = _list_gmail()
+    except Exception:
+        gmail_rows = []
     return jsonify(
         {
             "ok": True,
@@ -2158,6 +2216,10 @@ def api_summary():
             "proxies": {
                 "active": sum(1 for p in proxies if p.get("status") == "ready"),
                 "total": len(proxies),
+            },
+            "gmail": {
+                "active": sum(1 for g in gmail_rows if g.get("status") == "ready"),
+                "total": len(gmail_rows),
             },
         }
     )

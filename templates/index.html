@@ -307,6 +307,7 @@
         <button type="button" class="btn-ghost" id="btnCreateMuse">Tạo tài khoản Muse<span class="side-count" id="countPassword"></span></button>
         <button type="button" class="btn-ghost" id="btnCards">Kho thẻ<span class="side-count" id="countCards"></span></button>
         <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy<span class="side-count" id="countProxies"></span></button>
+        <button type="button" class="btn-ghost" id="btnGmailView">Kho Gmail<span class="side-count" id="countGmail"></span></button>
         <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản<span class="side-count" id="countBuff"></span></button>
         <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
@@ -360,6 +361,7 @@
             <option value="mailtm">mail.tm — @fldubai.com</option>
             <option value="genemail">generator.email — domain xoay (mới)</option>
             <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
+            <option value="gmail">Gmail — @gmail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
           </select>
           <label for="signupBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này. Tự động = dùng Chrome/Edge đã cài, không có thì Chromium của Playwright.</label>
           <select id="signupBrowser">
@@ -407,6 +409,7 @@
             <option value="mailtm">mail.tm — @fldubai.com</option>
             <option value="genemail">generator.email — domain xoay (mới)</option>
             <option value="guerrilla">Guerrilla Mail — domain xoay (mới)</option>
+            <option value="gmail">Gmail — @gmail.com (cần mật khẩu ứng dụng, đọc mã qua IMAP)</option>
           </select>
           <label for="buffBrowser" style="margin-top:0.5rem;">Trình duyệt — trình duyệt mở để tạo tài khoản, proxy gắn vào trình duyệt này.</label>
           <select id="buffBrowser">
@@ -538,6 +541,26 @@
         </div>
         <div class="panel"><div id="proxyTable"></div></div>
       </div>
+      <div id="gmailView" hidden>
+        <div class="top">
+          <div>
+            <h2>Kho Gmail</h2>
+            <div class="meta">Gmail của bạn dùng để tạo tài khoản Muse — Muse tin Gmail hơn mail temp nên qua được bước ngày sinh. Mỗi Gmail tạo đúng 1 tài khoản, lấy theo thứ tự từ trên xuống. Cần bật "Xác minh 2 bước" và tạo "Mật khẩu ứng dụng" 16 ký tự (Tài khoản Google → Bảo mật → Mật khẩu ứng dụng) rồi dán vào đây, KHÔNG dùng mật khẩu đăng nhập Google thường. Mật khẩu ứng dụng chỉ lưu trong file gmail_accounts.json trên máy này, không đẩy lên git.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-bottom:0.75rem;">
+          <textarea id="gmailPaste" placeholder="ten1@gmail.com|abcd efgh ijkl mnop&#10;ten2@gmail.com|xxxx xxxx xxxx xxxx" style="flex:1;min-height:4.5rem;"></textarea>
+          <button type="button" class="btn-primary" id="btnAddGmail">Thêm Gmail</button>
+        </div>
+        <div class="dash" id="gmailDash"></div>
+        <div class="toolbar" id="gmailBulkBar" style="margin-bottom:0.75rem;">
+          <button type="button" class="btn-error btn-sm" id="btnDeleteSelectedGmail" disabled>Xóa đã chọn</button>
+          <button type="button" class="btn-error btn-sm" id="btnDeleteAllGmail">Xóa tất cả</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetSelectedGmail" disabled>Mở lại đã chọn</button>
+          <button type="button" class="btn-ghost btn-sm" id="btnResetAllGmail">Mở lại tất cả</button>
+        </div>
+        <div class="panel"><div id="gmailTable"></div></div>
+      </div>
     </main>
   </div>
 
@@ -646,17 +669,20 @@
       const signup = viewMode === 'password';
       const cards = viewMode === 'cards';
       const proxy = viewMode === 'proxy';
+      const gmail = viewMode === 'gmail';
       const buff = viewMode === 'buff';
       const account = viewMode === 'account' || viewMode === 'kho';
       document.getElementById('signupView').hidden = !signup;
       document.getElementById('cardView').hidden = !cards;
       document.getElementById('proxyView').hidden = !proxy;
+      document.getElementById('gmailView').hidden = !gmail;
       document.getElementById('buffView').hidden = !buff;
       document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = 'Tạo tài khoản Muse';
       document.getElementById('btnCreateMuse').classList.toggle('active', viewMode === 'password');
       document.getElementById('btnCards').classList.toggle('active', cards);
       document.getElementById('btnProxyView').classList.toggle('active', proxy);
+      document.getElementById('btnGmailView').classList.toggle('active', gmail);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
       document.getElementById('btnAccountView').classList.toggle('active', account);
     }
@@ -1584,6 +1610,7 @@
         set('countPassword', data.created_password);
         set('countCards', data.cards);
         set('countProxies', data.proxies);
+        set('countGmail', data.gmail);
         set('countBuff', data.buff);
       } catch (e) { /* để lần sau */ }
     }
@@ -1831,6 +1858,182 @@
       const dup = data.duplicate || 0;
       toast(`Đã thêm mới ${added} proxy` + (dup ? ` · ${dup} proxy trùng đã bỏ qua` : ''));
     });
+    let gmailRows = [];
+    let gmailSelected = new Set();
+    function renderGmail(data) {
+      gmailRows = (data && data.gmail) || [];
+      const gmailIds = new Set(gmailRows.map(g => g.id));
+      gmailSelected.forEach(id => { if (!gmailIds.has(id)) gmailSelected.delete(id); });
+      const delSelBtn = document.getElementById('btnDeleteSelectedGmail');
+      const delAllBtn = document.getElementById('btnDeleteAllGmail');
+      delSelBtn.disabled = gmailSelected.size === 0;
+      delSelBtn.textContent = gmailSelected.size ? `Xóa đã chọn (${gmailSelected.size})` : 'Xóa đã chọn';
+      delAllBtn.disabled = gmailRows.length === 0;
+      delAllBtn.textContent = gmailRows.length ? `Xóa tất cả (${gmailRows.length})` : 'Xóa tất cả';
+      const resetSelBtn = document.getElementById('btnResetSelectedGmail');
+      const resetAllBtn = document.getElementById('btnResetAllGmail');
+      const usedCount = gmailRows.filter(g => g.status !== 'ready').length;
+      resetSelBtn.disabled = gmailSelected.size === 0;
+      resetSelBtn.textContent = gmailSelected.size ? `Mở lại đã chọn (${gmailSelected.size})` : 'Mở lại đã chọn';
+      resetAllBtn.disabled = usedCount === 0;
+      resetAllBtn.textContent = usedCount ? `Mở lại tất cả (${usedCount})` : 'Mở lại tất cả';
+      const box = document.getElementById('gmailTable');
+      const ready = gmailRows.filter(g => g.status === 'ready').length;
+      document.getElementById('gmailDash').innerHTML = `
+        <div class="stat"><b>${gmailRows.length}</b><span>Tổng Gmail</span></div>
+        <div class="stat good"><b>${ready}</b><span>Sẵn sàng</span></div>
+        <div class="stat bad"><b>${gmailRows.length - ready}</b><span>Đã dùng</span></div>
+        <div class="stat"><b>1</b><span>TK / Gmail</span></div>`;
+      if (!gmailRows.length) {
+        box.innerHTML = '<p class="hint">Chưa có Gmail nào. Dán Gmail theo dạng email|mật khẩu ứng dụng vào ô trên rồi bấm Thêm Gmail.</p>';
+        return;
+      }
+      const rows = gmailRows.map((g, i) => {
+        const actions = [];
+        if (g.status !== 'ready') actions.push(`<button type="button" class="btn-ghost btn-sm" data-gmail-reset="${g.id}">Mở lại</button>`);
+        actions.push(`<button type="button" class="btn-ghost btn-sm" data-gmail-del="${g.id}">Xóa</button>`);
+        return `<tr><td class="check"><input type="checkbox" class="gmail-check" data-gmail-check="${g.id}" ${gmailSelected.has(g.id) ? 'checked' : ''} /></td><td>${i + 1}</td><td><code>${escapeHtml(g.email || '')}</code></td><td>${g.uses || 0} lượt</td><td>${g.status === 'ready' ? '<span class="badge live">Sẵn sàng</span>' : '<span class="badge no">Đã dùng</span>'}</td><td>${actions.join(' ')}</td></tr>`;
+      }).join('');
+      box.innerHTML = `<table class="tbl"><thead><tr><th class="check"><input type="checkbox" id="gmailCheckAll" title="Chọn tất cả Gmail" /></th><th>#</th><th>Gmail</th><th>Lượt dùng</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      const checkAll = document.getElementById('gmailCheckAll');
+      if (checkAll) {
+        const selected = gmailRows.filter(g => gmailSelected.has(g.id)).length;
+        checkAll.checked = gmailRows.length > 0 && selected === gmailRows.length;
+        checkAll.indeterminate = selected > 0 && selected < gmailRows.length;
+        checkAll.addEventListener('change', () => {
+          gmailRows.forEach(g => {
+            if (checkAll.checked) gmailSelected.add(g.id);
+            else gmailSelected.delete(g.id);
+          });
+          renderGmail({ gmail: gmailRows });
+        });
+      }
+      box.querySelectorAll('.gmail-check').forEach(boxEl => {
+        boxEl.addEventListener('change', () => {
+          if (boxEl.checked) gmailSelected.add(boxEl.dataset.gmailCheck);
+          else gmailSelected.delete(boxEl.dataset.gmailCheck);
+          renderGmail({ gmail: gmailRows });
+        });
+      });
+      box.querySelectorAll('[data-gmail-del]').forEach(btn => btn.addEventListener('click', () => deleteGmail(btn.getAttribute('data-gmail-del'))));
+      box.querySelectorAll('[data-gmail-reset]').forEach(btn => btn.addEventListener('click', () => resetGmail(btn.getAttribute('data-gmail-reset'))));
+    }
+    async function loadGmail() {
+      const res = await fetch('/api/gmail?t=' + Date.now(), { cache: 'no-store' });
+      renderGmail(await res.json());
+    }
+    async function deleteGmail(id) {
+      if (!confirm('Xóa Gmail này khỏi kho?')) return;
+      const res = await fetch('/api/gmail/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      renderGmail(data);
+      loadSidebarCounts();
+      toast('Đã xóa Gmail');
+    }
+    async function resetGmail(id) {
+      const res = await fetch('/api/gmail/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      renderGmail(data);
+      loadSidebarCounts();
+      toast('Đã mở lại Gmail');
+    }
+    async function deleteGmailByIds(ids) {
+      const res = await fetch('/api/gmail/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function deleteSelectedGmail() {
+      if (!gmailSelected.size) return;
+      const ids = [...gmailSelected];
+      if (!confirm(`Xóa ${ids.length} Gmail đã chọn? Gmail bị xóa khỏi kho, không lấy lại được.`)) return;
+      const data = await deleteGmailByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      gmailSelected.clear();
+      renderGmail(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} Gmail`);
+    }
+    async function deleteAllGmail() {
+      if (!gmailRows.length) return;
+      if (!confirm(`Xóa TẤT CẢ ${gmailRows.length} Gmail trong kho? Gmail bị xóa khỏi kho, không lấy lại được.`)) return;
+      const ids = gmailRows.map(g => g.id);
+      const data = await deleteGmailByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không xóa được'); return; }
+      gmailSelected.clear();
+      renderGmail(data);
+      loadSidebarCounts();
+      toast(`Đã xóa ${data.removed || ids.length} Gmail`);
+    }
+    document.getElementById('btnDeleteSelectedGmail').addEventListener('click', deleteSelectedGmail);
+    document.getElementById('btnDeleteAllGmail').addEventListener('click', deleteAllGmail);
+    async function resetGmailByIds(ids) {
+      const res = await fetch('/api/gmail/reset-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.json();
+    }
+    async function resetSelectedGmail() {
+      if (!gmailSelected.size) return;
+      const ids = [...gmailSelected];
+      if (!confirm(`Mở lại ${ids.length} Gmail đã chọn? Gmail sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetGmailByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      gmailSelected.clear();
+      renderGmail(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} Gmail`);
+    }
+    async function resetAllGmail() {
+      const ids = gmailRows.filter(g => g.status !== 'ready').map(g => g.id);
+      if (!ids.length) { toast('Không có Gmail đã dùng nào.'); return; }
+      if (!confirm(`Mở lại tất cả ${ids.length} Gmail đã dùng? Gmail sẽ về trạng thái sẵn sàng, lượt dùng về 0.`)) return;
+      const data = await resetGmailByIds(ids);
+      if (!data.ok) { toast(data.error || 'Không mở lại được'); return; }
+      gmailSelected.clear();
+      renderGmail(data);
+      loadSidebarCounts();
+      toast(`Đã mở lại ${data.reset || ids.length} Gmail`);
+    }
+    document.getElementById('btnResetSelectedGmail').addEventListener('click', resetSelectedGmail);
+    document.getElementById('btnResetAllGmail').addEventListener('click', resetAllGmail);
+    document.getElementById('btnGmailView').addEventListener('click', async () => {
+      viewMode = 'gmail';
+      applyView();
+      await loadGmail();
+    });
+    document.getElementById('btnAddGmail').addEventListener('click', async () => {
+      const text = document.getElementById('gmailPaste').value;
+      if (!text.trim()) { toast('Chưa dán Gmail nào.'); return; }
+      const res = await fetch('/api/gmail/add-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không thêm được Gmail'); return; }
+      document.getElementById('gmailPaste').value = '';
+      renderGmail(data);
+      loadSidebarCounts();
+      const added = data.added || 0;
+      const dup = data.duplicate || 0;
+      const errs = (data.errors || []).length;
+      toast(`Đã thêm mới ${added} Gmail` + (dup ? ` · ${dup} Gmail trùng đã bỏ qua` : '') + (errs ? ` · ${errs} dòng lỗi (sai dạng email|mật khẩu ứng dụng)` : ''));
+    });
     function signupMode() {
       return 'password';
     }
@@ -1842,6 +2045,8 @@
         ? 'han + 9 số @<domain xoay của generator.email> · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã'
         : p === 'guerrilla'
         ? 'han + 9 số @<domain xoay của Guerrilla Mail> · mật khẩu hộp thư Congphu21@ · mail chỉ sống 1 giờ, tạo xong dùng ngay'
+        : p === 'gmail'
+        ? 'Gmail của bạn trong Kho Gmail · 1 Gmail = 1 tài khoản · đọc mã OTP qua IMAP bằng mật khẩu ứng dụng 16 ký tự'
         : 'han + 9 số @mailto.plus · mật khẩu hộp thư Congphu21@ · mở hộp thư lần sau vẫn lấy được mã';
     }
     function setSignupButtons(disabled) {
@@ -1891,7 +2096,7 @@
       if (loginPollTimer) clearInterval(loginPollTimer);
       const workers = count > 1 ? Math.min(count, used.length || count, maxWorkers) : 1;
       const proxyNote = used.length ? ` · ${count} tài khoản từ ${used.length} proxy, mỗi proxy ${perProxy} TK` : '';
-      const lead = mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : mailProvider === 'genemail' ? 'Đang tạo mail han + 9 số @<domain xoay generator.email>, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
+      const lead = mailProvider === 'gmail' ? 'Đang lấy Gmail sẵn sàng trong Kho Gmail, đọc mã OTP qua IMAP' : mailProvider === 'mailtm' ? 'Đang tạo mail han + 9 số @fldubai.com, mật khẩu Congphu21@' : mailProvider === 'genemail' ? 'Đang tạo mail han + 9 số @<domain xoay generator.email>, mật khẩu Congphu21@' : 'Đang tạo mail han + 9 số @mailto.plus, mật khẩu Congphu21@';
       setSignupStatus(
         count > 1 ? `Tạo ${count} tài khoản${proxyNote} · ${workers} luồng` : `${lead}…${proxyNote}`,
         'running'
@@ -2023,14 +2228,14 @@
     }
     async function fetchCreatedOtp(encodedEmail) {
       const email = decodeURIComponent(encodedEmail);
-      setSignupStatus('Đang lấy mã tempmail.plus của ' + email + '…', 'running');
+      setSignupStatus('Đang lấy mã trong hộp thư của ' + email + '…', 'running');
       const res = await fetch('/api/otp/' + encodeURIComponent(email), { cache: 'no-store' });
       const data = await res.json();
       if (!data.code) {
         setSignupStatus(data.error || 'Hộp thư chưa có mã', 'error');
         return;
       }
-      setSignupStatus(email + ' · mã tempmail.plus ' + data.code, 'done');
+      setSignupStatus(email + ' · mã ' + data.code, 'done');
       toast('Mã ' + data.code);
     }
     async function startCreatedLogin(encodedEmail, closeAfter) {

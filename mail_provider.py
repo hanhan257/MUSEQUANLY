@@ -16,6 +16,10 @@ chi la doi module:
 - "guerrilla": Guerrilla Mail (them tu v128). API cong khai, khong can
   dang ky/key — session theo cookie PHPSESSID, dat ten han + 9 so qua
   set_email_user (xem guerrilla_mail_client.py). Mail chi song 1 gio.
+- "gmail": Gmail that cua user (them tu v130). KHONG tao moi — lay Gmail
+  chua dung trong Kho Gmail (gmail_store.py), 1 Gmail = 1 TK Muse; doc
+  ma OTP qua IMAP bang mat khau ung dung 16 ky tu. Mat khau ung dung chi
+  nam trong gmail_accounts.json (da gitignore), khong ghi vao kho TK.
 """
 import importlib
 from urllib.parse import quote, unquote, urlparse
@@ -25,6 +29,7 @@ PROVIDERS = {
     "mailtm": ("mailtm_client", "MailTmError", "mail.tm"),
     "genemail": ("generator_email_client", "GeneratorEmailError", "generator.email"),
     "guerrilla": ("guerrilla_mail_client", "GuerrillaMailError", "guerrilla-mail"),
+    "gmail": ("gmail_client", "GmailError", "gmail"),
 }
 
 
@@ -90,6 +95,8 @@ def normalize_provider(value) -> str:
         return "genemail"
     if v in ("guerrilla", "guerrillamail"):
         return "guerrilla"
+    if v in ("gmail",):
+        return "gmail"
     return "tempmail"
 
 
@@ -144,6 +151,8 @@ def provider_for_email(email, proxies=None) -> str:
             return "guerrilla"
     except Exception:
         pass
+    if domain == "gmail.com":
+        return "gmail"
     try:
         from generator_email_client import is_active_domain
 
@@ -173,6 +182,13 @@ def create_mailbox_for(provider, password: str, mode: str, proxies=None) -> tupl
         # Domain do server chon theo session, khong truyen domain.
         if mode == "password":
             return mod.create_han_mailbox(password, proxies=proxies)
+        return mod.create_mailbox(password, proxies=proxies)
+    if provider == "gmail":
+        # Gmail khong tao moi — lay Gmail chua dung trong Kho Gmail.
+        # Tra ve (email, password truyen vao, token 'email|mat-khau-ung-dung'):
+        # password la ACCOUNT_PASSWORD chung (lam mat khau TK Muse + luu
+        # kho nhu cac provider khac); mat khau ung dung that chi nam trong
+        # token va file gmail_accounts.json.
         return mod.create_mailbox(password, proxies=proxies)
     if mode == "password":
         return mod.create_han_mailbox(password, "fldubai.com", proxies=proxies)
