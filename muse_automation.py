@@ -4303,15 +4303,13 @@ def create_meta_account(
                 if _text_visible(page, _META_AUTH_TEXT):
                     break
                 if not clicked_login:
-                    try:
-                        btn = page.get_by_role("button", name=re.compile(r"Đăng nhập|Log in", re.I)).first
-                        if btn.count() > 0 and btn.is_visible():
-                            btn.click()
-                            clicked_login = True
-                            page.wait_for_timeout(2000)
-                            continue
-                    except Exception:
-                        pass
+                    # Nut Dang nhap co the la <button> hoac <a> (link) —
+                    # dung helper tim ca hai dang (nhu v136); neu bi che
+                    # thi bam bang JS.
+                    if _click_enabled_button(page, re.compile(r"Đăng nhập|Log in", re.I)) or _click_button_js(page, re.compile(r"Đăng nhập|Log in", re.I)):
+                        clicked_login = True
+                        page.wait_for_timeout(2000)
+                        continue
                 page.wait_for_timeout(2500)
             if email_el is None:
                 if not _text_visible(page, _META_AUTH_TEXT):
