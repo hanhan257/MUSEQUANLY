@@ -309,6 +309,7 @@
         <button type="button" class="btn-ghost" id="btnProxyView">Kho proxy<span class="side-count" id="countProxies"></span></button>
         <button type="button" class="btn-ghost" id="btnGmailView">Kho Gmail<span class="side-count" id="countGmail"></span></button>
         <button type="button" class="btn-ghost" id="btnYahooView">Kho Yahoo<span class="side-count" id="countYahoo"></span></button>
+        <button type="button" class="btn-ghost" id="btnCaptchaView">Giải captcha<span class="side-count" id="countCaptcha"></span></button>
         <button type="button" class="btn-ghost" id="btnBuffView">Buff tài khoản<span class="side-count" id="countBuff"></span></button>
         <div class="build">Bản cập nhật: {{ app_build }}</div>
       </div>
@@ -588,6 +589,26 @@
         </div>
         <div class="panel"><div id="yahooTable"></div></div>
       </div>
+      <div id="captchaView" hidden>
+        <div class="top">
+          <div>
+            <h2>Giải captcha</h2>
+            <div class="meta">Khi đăng nhập gặp lưới chọn hình reCAPTCHA, tool thử giải tự động bằng dịch vụ rồi bấm Tiếp tục. Cần đăng ký tài khoản ở 2captcha.com hoặc capsolver.com, nạp tiền rồi dán API key vào đây. Mỗi lần giải tốn một ít tiền (khoảng vài nghìn đồng cho 1000 lần). Key chỉ lưu trong file captcha_config.json trên máy này, không đẩy lên git. Nếu giải không được hoặc hết tiền, tool vẫn chờ bạn giải tay trong Chrome được giữ như cũ.</div>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-bottom:0.75rem;">
+          <label class="check-inline">Dịch vụ
+            <select id="captchaProvider">
+              <option value="2captcha">2Captcha</option>
+              <option value="capsolver">CapSolver</option>
+            </select>
+          </label>
+          <input type="password" id="captchaApiKey" placeholder="Dán API key vào đây" autocomplete="off" spellcheck="false" style="flex:1;" />
+          <label class="check-inline"><input type="checkbox" id="captchaEnabled" checked /> Bật giải tự động</label>
+          <button type="button" class="btn-primary" id="btnSaveCaptcha">Lưu</button>
+        </div>
+        <div class="dash" id="captchaDash"></div>
+      </div>
     </main>
   </div>
 
@@ -698,6 +719,7 @@
       const proxy = viewMode === 'proxy';
       const gmail = viewMode === 'gmail';
       const yahoo = viewMode === 'yahoo';
+      const captcha = viewMode === 'captcha';
       const buff = viewMode === 'buff';
       const account = viewMode === 'account' || viewMode === 'kho';
       document.getElementById('signupView').hidden = !signup;
@@ -705,6 +727,7 @@
       document.getElementById('proxyView').hidden = !proxy;
       document.getElementById('gmailView').hidden = !gmail;
       document.getElementById('yahooView').hidden = !yahoo;
+      document.getElementById('captchaView').hidden = !captcha;
       document.getElementById('buffView').hidden = !buff;
       document.getElementById('accountView').hidden = !account;
       document.getElementById('signupTitle').textContent = 'Tạo tài khoản Muse';
@@ -713,6 +736,7 @@
       document.getElementById('btnProxyView').classList.toggle('active', proxy);
       document.getElementById('btnGmailView').classList.toggle('active', gmail);
       document.getElementById('btnYahooView').classList.toggle('active', yahoo);
+      document.getElementById('btnCaptchaView').classList.toggle('active', captcha);
       document.getElementById('btnBuffView').classList.toggle('active', buff);
       document.getElementById('btnAccountView').classList.toggle('active', account);
     }
@@ -2046,6 +2070,42 @@
       viewMode = 'gmail';
       applyView();
       await loadGmail();
+    });
+    async function loadCaptcha() {
+      try {
+        const res = await fetch('/api/captcha?t=' + Date.now(), { cache: 'no-store' });
+        const data = await res.json();
+        if (!data.ok) return;
+        document.getElementById('captchaProvider').value = data.provider || '2captcha';
+        document.getElementById('captchaEnabled').checked = !!data.enabled;
+        const label = data.provider === 'capsolver' ? 'CapSolver' : '2Captcha';
+        document.getElementById('captchaDash').innerHTML = `
+          <div class="stat ${data.has_key && data.enabled ? 'good' : 'bad'}"><b>${data.has_key && data.enabled ? 'Bật' : 'Tắt'}</b><span>Giải tự động</span></div>
+          <div class="stat"><b>${label}</b><span>Dịch vụ</span></div>
+          <div class="stat ${data.has_key ? 'good' : 'bad'}"><b>${data.has_key ? 'Đã có key' : 'Chưa có key'}</b><span>API key</span></div>`;
+        const el = document.getElementById('countCaptcha');
+        if (el) el.textContent = data.has_key && data.enabled ? 'Bật' : '';
+      } catch (e) { /* để lần sau */ }
+    }
+    document.getElementById('btnCaptchaView').addEventListener('click', async () => {
+      viewMode = 'captcha';
+      applyView();
+      await loadCaptcha();
+    });
+    document.getElementById('btnSaveCaptcha').addEventListener('click', async () => {
+      const provider = document.getElementById('captchaProvider').value;
+      const apiKey = document.getElementById('captchaApiKey').value;
+      const enabled = document.getElementById('captchaEnabled').checked;
+      const res = await fetch('/api/captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, api_key: apiKey, enabled }),
+      });
+      const data = await res.json();
+      if (!data.ok) { toast(data.error || 'Không lưu được'); return; }
+      document.getElementById('captchaApiKey').value = '';
+      await loadCaptcha();
+      toast('Đã lưu cài đặt giải captcha');
     });
     document.getElementById('btnAddGmail').addEventListener('click', async () => {
       const text = document.getElementById('gmailPaste').value;

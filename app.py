@@ -94,7 +94,7 @@ from warehouse_store import (
 
 ACCOUNTS_FILE = DATA_DIR / "accounts.txt"
 MUSE_LOGIN_URL = "https://muse.ai/"
-APP_BUILD = "signup-v131"
+APP_BUILD = "signup-v132"
 SIGNUP_COUNTS = (1, 5, 10, 50)
 ACCOUNT_PASSWORD = "Congphu21@"
 SIGNUP_MAX = 1000
@@ -2138,6 +2138,30 @@ def api_proxies_reset_many():
     if not reset:
         return jsonify({"ok": False, "error": "Không thấy proxy lỗi nào."}), 404
     return jsonify({"ok": True, "reset": reset, "proxies": list_proxies()})
+
+
+@app.get("/api/captcha")
+def api_captcha_status():
+    from captcha_solver import status_summary
+
+    return jsonify({"ok": True, **status_summary()})
+
+
+@app.post("/api/captcha")
+def api_captcha_save():
+    from captcha_solver import save_config, status_summary
+
+    body = request.get_json(force=True, silent=True) or {}
+    provider = str(body.get("provider") or "2captcha")
+    api_key = str(body.get("api_key") or "")
+    enabled = bool(body.get("enabled", True))
+    if enabled and not api_key.strip():
+        return jsonify({"ok": False, "error": "Chưa nhập API key."}), 400
+    try:
+        save_config(provider, api_key, enabled)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, **status_summary()})
 
 
 @app.get("/api/gmail")

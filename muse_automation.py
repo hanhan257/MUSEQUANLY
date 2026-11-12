@@ -948,13 +948,35 @@ def _click_human_continue(page: Page) -> bool:
     return False
 
 
+def _try_auto_solve_captcha(page: Page) -> tuple[bool, str]:
+    """Giai captcha bang dich vu ben ngoai neu da cau hinh key.
+
+    Tra (True, ten dich vu) neu chen duoc token vao trang,
+    (False, ly do) neu chua cau hinh / loi — buoc goi se doi user giai tay.
+    """
+    try:
+        import captcha_solver
+    except Exception as exc:
+        return False, f"khong nap duoc captcha_solver ({exc})"
+    try:
+        return captcha_solver.auto_solve_page(page)
+    except Exception as exc:
+        return False, f"loi giai captcha ({exc})"
+
+
 def _drive_until_selfie(page: Page, on_progress: ProgressCallback | None) -> str | None:
-    """Đi tiếp màn xác minh người thật tới lúc up ảnh. Không tự chọn ô hình captcha."""
+    """Đi tiếp màn xác minh người thật tới lúc up ảnh.
+
+    Gap luoi chon hinh captcha: thu giai tu dong bang dich vu (2Captcha /
+    CapSolver) neu da cau hinh key; neu khong duoc thi doi user giai tay
+    trong Chrome duoc giu nhu cu.
+    """
     if not _human_verify_page(page):
         return None
     selfie_name = ""
     selfie_tries = 0
     reported_captcha = False
+    solver_tried = False
     for _ in range(120):
         if stop_requested():
             return None
@@ -1010,6 +1032,33 @@ def _drive_until_selfie(page: Page, on_progress: ProgressCallback | None) -> str
             page.wait_for_timeout(1000)
             continue
         if _captcha_challenge_visible(page):
+            if not solver_tried:
+                solver_tried = True
+                _emit(
+                    on_progress,
+                    step="human_check",
+                    detail="Thấy lưới captcha — đang thử giải tự động…",
+                    final_url=page.url,
+                )
+                solved, note = _try_auto_solve_captcha(page)
+                if solved:
+                    _emit(
+                        on_progress,
+                        step="human_check",
+                        detail=f"Đã giải captcha bằng {note} — bấm Tiếp tục",
+                        final_url=page.url,
+                    )
+                    page.wait_for_timeout(800)
+                    if _click_named_button(page, BTN_NEXT) or _click_captcha_verify(page) == "ok":
+                        page.wait_for_timeout(1800)
+                        continue
+                else:
+                    _emit(
+                        on_progress,
+                        step="needs_user",
+                        detail=f"Giải tự động không được ({note}) — chờ bạn giải tay.",
+                        final_url=page.url,
+                    )
             if not reported_captcha:
                 reported_captcha = True
                 _emit(
@@ -1042,6 +1091,14 @@ def _user_gate_detail(gate: str) -> str:
         return "Đã up ảnh ngẫu nhiên từ D:\\Sefile. Chrome được giữ."
     if gate == "upload":
         return "Chưa gắn được ảnh selfie từ D:\\Sefile. Chrome được giữ."
+    try:
+        import captcha_solver
+
+        auto = captcha_solver.configured() is not None
+    except Exception:
+        auto = False
+    if auto:
+        return "Dừng ở captcha chọn hình. Giải tự động không qua được — chờ bạn giải tay. Chrome được giữ."
     return "Dừng ở captcha chọn hình. Tool không tự chọn ảnh. Chrome được giữ."
 
 
